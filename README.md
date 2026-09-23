@@ -30,7 +30,32 @@ nm-pocket/confirmar/uelicon.mp4       vídeo da página (e a capa, uelicon-capa.
 O `nm-pocket/confirmar/index.html` que o público abre **não fica no repositório**: ele é gerado
 pelo painel a partir do modelo.
 
-## Editar a página
+## Abas do painel
+
+1. **Página de aplicação** (`/nm-pocket/`): textos editáveis direto na página.
+2. **Aplicações**: o painel de quem preencheu o formulário (`painel-*.php`, que fica só no servidor; o painel acha o arquivo pelo nome).
+3. **Página de confirmação**: textos editáveis direto na página.
+4. **Confirmações**: quem respondeu, check-in e planilha.
+5. **Grupo do WhatsApp**: envio, acompanhamento, fora do grupo e lista para o ManyChat.
+
+## Editar a página de aplicação
+
+Os textos da `/nm-pocket/index.html` levam uma marca `data-ed="aNNN"` (invisível para o visitante).
+**Publicar troca só os textos editados dentro do arquivo que está no ar**, então editar o arquivo
+direto no servidor continua valendo e o painel não apaga isso. Cada publicação guarda a versão
+anterior em `/home/arlindo/data/nm-pocket/pagina-aplicacao-backups/`.
+
+Texto novo que você acrescentar no arquivo só vira editável depois de marcado:
+
+```bash
+sudo -u www-data php /home/arlindo/sites/iuv.com.br/nm-pocket-app/pagina.php marcar-aplicacao
+```
+
+Ele marca só título, parágrafo, item, botão e afins que ainda não tenham marca, e não mexe em
+mais nada do arquivo. A pasta `nm-pocket/` e o `index.html` dela ficam no grupo `www-data` com
+escrita (dono continua `arlindo`), porque é o painel que grava.
+
+## Editar a página de confirmação
 
 **Textos:** pelo painel, aba **Página de confirmação** (a primeira). Clica no texto, escreve por
 cima, **Salvar rascunho** guarda sem mexer no ar e **Publicar** leva para a página. Cada

@@ -3,7 +3,8 @@
 **Desde 23/09/2026 o projeto é do Arlindo.** Não executar nada aqui (código, servidor, dados)
 sem pedido explícito do Jean. Ele edita pelo GitHub e pelo servidor.
 
-- Página: https://iuv.com.br/nm-pocket/confirmar/ · Painel: https://iuv.com.br/nm-pocket-app/confirmacoes.php
+- Página de aplicação: https://iuv.com.br/nm-pocket/ (arquivo do Arlindo, com textos marcados `data-ed` e editáveis pelo painel)
+- Página de confirmação: https://iuv.com.br/nm-pocket/confirmar/ · Painel: https://iuv.com.br/nm-pocket-app/confirmacoes.php
 - Repositório (público): https://github.com/JeanParanhos/nm-pocket-confirmacao
 - Servidor: VPS EVER, site do Arlindo em `/home/arlindo/sites/iuv.com.br`; dados em `/home/arlindo/data/nm-pocket/`
 - Acessos: `Cofre/nm-pocket-confirmacao/`

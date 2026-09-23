@@ -173,6 +173,25 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && isset($_POST['acao'])) {
         exit(json_encode(['ok' => nmc_salvar_json(NMC_ENVIOS, $mapa), 'em' => date('d/m H:i')]));
     }
 
+    // Página de aplicação (/nm-pocket/): o rascunho vira edição dentro do arquivo no ar.
+    if (in_array($_POST['acao'], ['salvar_pagina', 'publicar_pagina', 'descartar_pagina'], true) && ($_POST['qual'] ?? '') === 'aplicacao') {
+        $d = nma_dados();
+        if ($_POST['acao'] === 'descartar_pagina') {
+            $d['rascunho'] = [];
+            exit(json_encode(['ok' => nmc_salvar_json(NMA_DADOS, $d)]));
+        }
+        $textos = json_decode((string) ($_POST['textos'] ?? ''), true);
+        if (is_array($textos)) {
+            $d['rascunho'] = nma_diferencas($textos);
+            nmc_salvar_json(NMA_DADOS, $d);
+        }
+        if ($_POST['acao'] === 'salvar_pagina') {
+            exit(json_encode(['ok' => true, 'pendente' => $d['rascunho'] !== []]));
+        }
+        [$ok, $n] = nma_publicar();
+        exit(json_encode(['ok' => $ok, 'textos' => $n, 'em' => date('d/m H:i')]));
+    }
+
     // Página de confirmação: rascunho, publicar, descartar.
     if (in_array($_POST['acao'], ['salvar_pagina', 'publicar_pagina', 'descartar_pagina'], true)) {
         $d = nmp_dados();
@@ -204,6 +223,15 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && isset($_POST['acao'])) {
 }
 
 // ─────────────── Prévia editável (vai dentro do iframe da aba Página) ───────────────
+if (($_GET['previa'] ?? '') === 'aplicacao') {
+    $html = nma_montar(nma_dados()['rascunho']);
+    // Na prévia não roda script nenhum: o pixel da Meta contaria visita falsa. E os caminhos
+    // relativos da página (logo.png, ../mockup...) precisam da pasta dela como base.
+    $html = preg_replace('#<(script|noscript)\b.*?</\1>#is', '', $html);
+    $html = preg_replace('#<head\b[^>]*>#i', '$0<base href="/nm-pocket/">', $html, 1);
+    header('Content-Type: text/html; charset=utf-8');
+    exit($html);
+}
 if (isset($_GET['previa'])) {
     $html = nmp_montar(nmp_dados()['rascunho']);
     // As telas de depois do envio ficam escondidas na página; na prévia aparecem para editar.
@@ -376,9 +404,21 @@ if (($_GET['csv'] ?? '') === 'manychat') {
     exit;
 }
 
-$aba = in_array($_GET['aba'] ?? '', ['grupo', 'confirmacoes'], true) ? $_GET['aba'] : 'pagina';
+$aba = in_array($_GET['aba'] ?? '', ['aplicacoes', 'pagina', 'confirmacoes', 'grupo'], true) ? $_GET['aba'] : 'aplicacao-pagina';
 $pag = nmp_dados();
 $pagPendente = $pag['rascunho'] !== $pag['publicado'];
+$apl = nma_dados();
+$aplPendente = $apl['rascunho'] !== [];
+$linkAplicacao = 'https://iuv.com.br/nm-pocket/';
+// O painel das aplicações tem nome secreto e fica só no servidor: acha pelo padrão do nome.
+$painelAplicacoes = basename((string) (glob(__DIR__ . '/painel-*.php')[0] ?? ''));
+
+// Os dois editores de página usam a mesma tela; muda só de qual página se trata.
+$ed = $aba === 'aplicacao-pagina'
+    ? ['qual' => 'aplicacao', 'previa' => '?previa=aplicacao', 'link' => $linkAplicacao, 'pendente' => $aplPendente,
+       'quando' => $apl['publicado_em'], 'titulo' => 'página de aplicação', 'larg' => '390px']
+    : ['qual' => 'confirmacao', 'previa' => '?previa=1', 'link' => $linkConfirmar, 'pendente' => $pagPendente,
+       'quando' => $pag['publicado_em'], 'titulo' => 'página de confirmação', 'larg' => '390px'];
 
 // ─────────────── CSV ───────────────
 if (isset($_GET['csv'])) {
@@ -405,7 +445,7 @@ $token = (string) $_SESSION['token'];
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="robots" content="noindex, nofollow">
-<title>Confirmações — NM Pocket</title>
+<title>Painel — Imersão Pocket</title>
 <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700;800;900&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
   *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
@@ -473,6 +513,7 @@ $token = (string) $_SESSION['token'];
   .ed-barra{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px}
   .ed-estado{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
   .larguras{display:flex;gap:6px}
+  .quadro-aplicacoes{width:100%;height:calc(100vh - 230px);min-height:600px;border:1px solid var(--border);border-radius:14px;background:var(--bg);margin-bottom:40px}
   .ed-dica{font-size:13px;color:var(--muted);margin-bottom:14px}
   .ed-palco{background:var(--card2);border:1px solid var(--border);border-radius:14px;padding:18px;display:flex;justify-content:center;margin-bottom:50px}
   .ed-palco iframe{height:78vh;min-height:560px;max-width:100%;border:1px solid var(--border);border-radius:12px;background:#060d1a;transition:width .2s}
@@ -524,7 +565,7 @@ $token = (string) $_SESSION['token'];
 <div class="wrap">
   <div class="topo">
     <div>
-      <h1>Confirmações de presença</h1>
+      <h1>Painel da Imersão Pocket</h1>
       <div class="sub">Imersão Novos Milionários Pocket · 26/09 · AlphaPark Hotel</div>
     </div>
     <div class="acoes">
@@ -533,40 +574,51 @@ $token = (string) $_SESSION['token'];
   </div>
 
   <nav class="menu" aria-label="Seções">
-    <a href="<?= e($eu) ?>" <?= $aba === 'pagina' ? 'aria-current="page"' : '' ?>>Página de confirmação<?php if ($pagPendente): ?> <span class="pend">rascunho</span><?php endif; ?></a>
+    <a href="<?= e($eu) ?>" <?= $aba === 'aplicacao-pagina' ? 'aria-current="page"' : '' ?>>Página de aplicação<?php if ($aplPendente): ?> <span class="pend">rascunho</span><?php endif; ?></a>
+    <a href="?aba=aplicacoes" <?= $aba === 'aplicacoes' ? 'aria-current="page"' : '' ?>>Aplicações</a>
+    <a href="?aba=pagina" <?= $aba === 'pagina' ? 'aria-current="page"' : '' ?>>Página de confirmação<?php if ($pagPendente): ?> <span class="pend">rascunho</span><?php endif; ?></a>
     <a href="?aba=confirmacoes" <?= $aba === 'confirmacoes' ? 'aria-current="page"' : '' ?>>Confirmações <span><?= count($linhas) ?></span></a>
     <a href="?aba=grupo" <?= $aba === 'grupo' ? 'aria-current="page"' : '' ?>>Grupo do WhatsApp <span><?= count($faltam) ?> faltam</span></a>
   </nav>
 
-<?php if ($aba === 'pagina'): ?>
+<?php if ($aba === 'aplicacoes'): ?>
+  <?php if ($painelAplicacoes === ''): ?>
+    <div class="tabela-box"><div class="vazio">Não achei o painel das aplicações nesta pasta do servidor.</div></div>
+  <?php else: ?>
+    <p class="ed-dica">Quem preencheu o formulário de aplicação. <a class="wa" href="<?= e($painelAplicacoes) ?>" target="_blank" rel="noopener">Abrir em tela cheia ↗</a></p>
+    <iframe class="quadro-aplicacoes" src="<?= e($painelAplicacoes) ?>" title="Aplicações"></iframe>
+  <?php endif; ?>
+<?php elseif ($aba === 'pagina' || $aba === 'aplicacao-pagina'): ?>
   <div class="ed-barra">
     <div class="ed-estado">
-      <span id="ed-selo" class="tag <?= $pagPendente ? 'alerta' : 'sim' ?>"><?= $pagPendente ? 'rascunho não publicado' : 'no ar igual ao painel' ?></span>
-      <span class="sub2" id="ed-quando"><?= $pag['publicado_em'] ? 'publicado ' . date('d/m H:i', strtotime($pag['publicado_em'])) : 'nunca publicado pelo painel' ?></span>
+      <span id="ed-selo" class="tag <?= $ed['pendente'] ? 'alerta' : 'sim' ?>"><?= $ed['pendente'] ? 'rascunho não publicado' : 'no ar igual ao painel' ?></span>
+      <span class="sub2" id="ed-quando"><?= $ed['quando'] ? 'publicado ' . date('d/m H:i', strtotime($ed['quando'])) : 'nunca publicado pelo painel' ?></span>
     </div>
     <div class="acoes">
       <div class="larguras" role="group" aria-label="Largura da prévia">
-        <button class="aba" data-larg="100%" aria-pressed="false">Computador</button>
-        <button class="aba" data-larg="390px" aria-pressed="true">Celular</button>
+        <button class="aba" data-larg="100%" aria-pressed="<?= $ed['larg'] === '100%' ? 'true' : 'false' ?>">Computador</button>
+        <button class="aba" data-larg="390px" aria-pressed="<?= $ed['larg'] === '390px' ? 'true' : 'false' ?>">Celular</button>
       </div>
-      <a class="bt" href="<?= e($linkConfirmar) ?>" target="_blank" rel="noopener">Ver no ar ↗</a>
-      <button class="bt perigo" id="ed-descartar" type="button" <?= $pagPendente ? '' : 'hidden' ?>>Descartar rascunho</button>
+      <a class="bt" href="<?= e($ed['link']) ?>" target="_blank" rel="noopener">Ver no ar ↗</a>
+      <button class="bt perigo" id="ed-descartar" type="button" <?= $ed['pendente'] ? '' : 'hidden' ?>>Descartar rascunho</button>
       <button class="bt" id="ed-salvar" type="button">Salvar rascunho</button>
       <button class="bt pri" id="ed-publicar" type="button">Publicar</button>
     </div>
   </div>
   <p class="ed-dica">Clique em qualquer texto da página e escreva por cima. <b>Ctrl/⌘+B</b> deixa em negrito. <b>Salvar rascunho</b> guarda sem mexer no ar; <b>Publicar</b> leva para a página que o pessoal abre.</p>
-  <div class="ed-palco"><iframe id="ed-tela" src="?previa=1" title="Prévia editável da página de confirmação" style="width:390px"></iframe></div>
+  <div class="ed-palco"><iframe id="ed-tela" src="<?= e($ed['previa']) ?>" title="Prévia editável da <?= e($ed['titulo']) ?>" style="width:<?= e($ed['larg']) ?>"></iframe></div>
 
   <dialog id="ed-confirma" class="ed-dialogo">
     <h3>Publicar a página?</h3>
-    <p>Quem abrir <b><?= e($linkConfirmar) ?></b> passa a ver os textos novos na hora. A versão anterior fica guardada.</p>
+    <p>Quem abrir <b><?= e($ed['link']) ?></b> passa a ver os textos novos na hora. A versão anterior fica guardada.</p>
     <div class="acoes"><button class="bt" value="nao" id="ed-cancela">Cancelar</button><button class="bt pri" id="ed-vai">Publicar agora</button></div>
   </dialog>
 
   <script>
   (function () {
     var TOKEN = <?= json_encode($token) ?>;
+    var QUAL = <?= json_encode($ed['qual']) ?>;
+    var PREVIA = <?= json_encode($ed['previa']) ?>;
     var tela = document.getElementById('ed-tela');
     var selo = document.getElementById('ed-selo');
     var btDesc = document.getElementById('ed-descartar');
@@ -610,7 +662,7 @@ $token = (string) $_SESSION['token'];
 
     function enviar(acao, extra) {
       var f = new FormData();
-      f.append('acao', acao); f.append('token', TOKEN);
+      f.append('acao', acao); f.append('token', TOKEN); f.append('qual', QUAL);
       if (extra) f.append('textos', JSON.stringify(extra));
       return fetch(location.pathname, { method: 'POST', body: f, credentials: 'same-origin' }).then(function (r) { return r.json(); });
     }
@@ -638,7 +690,7 @@ $token = (string) $_SESSION['token'];
 
     btDesc.addEventListener('click', function () {
       if (!confirm('Descartar o rascunho e voltar aos textos que estão no ar?')) return;
-      enviar('descartar_pagina').then(function () { mudou = false; estado(false); tela.src = '?previa=1&t=' + Date.now(); });
+      enviar('descartar_pagina').then(function () { mudou = false; estado(false); tela.src = PREVIA + '&t=' + Date.now(); });
     });
 
     document.querySelectorAll('.larguras .aba').forEach(function (b) {
