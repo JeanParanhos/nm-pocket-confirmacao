@@ -10,6 +10,8 @@ declare(strict_types=1);
 
 require __DIR__ . '/confirmacao-comum.php';
 require __DIR__ . '/pagina.php';
+define('NMV_SO_FUNCOES', true);
+require __DIR__ . '/visita.php';
 
 header('X-Robots-Tag: noindex, nofollow, noarchive');
 header('Cache-Control: no-store');
@@ -267,6 +269,7 @@ foreach (nmc_ler_ndjson(NMC_ARQUIVO) as $reg) {
 $aplicouFone  = [];
 $aplicouEmail = [];
 $aplicacaoPorChave = []; // telefone => a aplicação mais recente (nome, WhatsApp, data, UF)
+$aplicacoesDatas = [];   // data de cada aplicação fora da lixeira (conta igual ao painel de aplicações)
 $naLixeira = nmc_ler_json(NMC_DIR . '/excluidos.json'); // o que o painel de aplicações mandou para a lixeira
 foreach (nmc_ler_ndjson(NMC_APLICACOES) as $ap) {
     $r = $ap['respostas'] ?? [];
@@ -274,6 +277,7 @@ foreach (nmc_ler_ndjson(NMC_APLICACOES) as $ap) {
     if ($f !== '') {
         $aplicouFone[$f] = true;
         if (!isset($naLixeira[$ap['id'] ?? ''])) {
+            $aplicacoesDatas[] = (string) ($ap['criado_em'] ?? '');
             $aplicacaoPorChave[$f] = [
                 'nome'     => trim((string) ($r['nome'] ?? '')),
                 'whatsapp' => (string) ($r['whatsapp'] ?? ''),
@@ -444,6 +448,24 @@ $ed = $aba === 'aplicacao-pagina'
     : ['qual' => 'confirmacao', 'previa' => '?previa=1', 'link' => $linkConfirmar, 'pendente' => $pagPendente,
        'quando' => $pag['publicado_em'], 'titulo' => 'página de confirmação', 'larg' => '390px'];
 
+// Acessos da página e quanto virou aplicação / resposta.
+if ($aba === 'aplicacao-pagina' || $aba === 'pagina') {
+    $acesso = nmv_resumo($ed['qual']);
+    $hojeStr = date('Y-m-d');
+    $seteStr = date('Y-m-d', strtotime('-6 days'));
+    $conv = ['hoje' => 0, 'sete' => 0, 'total' => 0];
+    $datas = $ed['qual'] === 'aplicacao'
+        ? $aplicacoesDatas
+        : array_map(static fn($p) => (string) $p['criado_em'], $pessoas);
+    foreach ($datas as $em) {
+        $dia = substr($em, 0, 10);
+        $conv['total']++;
+        if ($dia >= $seteStr) { $conv['sete']++; }
+        if ($dia === $hojeStr) { $conv['hoje']++; }
+    }
+    $convRotulo = $ed['qual'] === 'aplicacao' ? 'aplicações' : 'respostas';
+}
+
 // ─────────────── CSV ───────────────
 if (isset($_GET['csv'])) {
     header('Content-Type: text/csv; charset=utf-8');
@@ -537,6 +559,16 @@ $token = (string) $_SESSION['token'];
   .ed-barra{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px}
   .ed-estado{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
   .larguras{display:flex;gap:6px}
+  .acessos{display:grid;grid-template-columns:repeat(5,1fr) 1.4fr;gap:10px;margin-bottom:6px}
+  .acessos .kpi{padding:14px 16px}
+  .acessos .kpi .n{font-size:24px}
+  .acessos .kpi .l{font-size:12px;line-height:1.4}
+  .acessos .serie{display:flex;align-items:flex-end;gap:6px;justify-content:space-between}
+  .barra-dia{display:flex;flex-direction:column;align-items:center;gap:3px;flex:1;font-size:10.5px;color:var(--muted)}
+  .barra-dia i{display:block;width:100%;max-width:22px;background:var(--accent);border-radius:4px 4px 2px 2px;opacity:.85}
+  .barra-dia .num{color:var(--text);font-weight:600;min-height:13px}
+  .sub-acessos{font-size:12px;margin-bottom:16px}
+  @media (max-width:1100px){.acessos{grid-template-columns:repeat(3,1fr)}}
   .quadro-aplicacoes{width:100%;height:calc(100vh - 230px);min-height:600px;border:1px solid var(--border);border-radius:14px;background:var(--bg);margin-bottom:40px}
   .ed-dica{font-size:13px;color:var(--muted);margin-bottom:14px}
   .ed-palco{background:var(--card2);border:1px solid var(--border);border-radius:14px;padding:18px;display:flex;justify-content:center;margin-bottom:50px}
@@ -614,6 +646,25 @@ $token = (string) $_SESSION['token'];
     <iframe class="quadro-aplicacoes" src="<?= e($painelAplicacoes) ?>" title="Aplicações"></iframe>
   <?php endif; ?>
 <?php elseif ($aba === 'pagina' || $aba === 'aplicacao-pagina'): ?>
+  <?php
+    $pct = static fn(int $a, int $b) => $b > 0 ? ' · ' . round(100 * $a / $b) . '% das pessoas' : '';
+    $maxSerie = max(1, max(array_map(static fn($x) => $x[0], $acesso['serie'])));
+  ?>
+  <div class="acessos">
+    <div class="kpi"><div class="n"><?= $acesso['hoje'][1] ?></div><div class="l">pessoas hoje<br><span class="sub2"><?= $acesso['hoje'][0] ?> acessos</span></div></div>
+    <div class="kpi"><div class="n"><?= $acesso['ontem'][1] ?></div><div class="l">pessoas ontem<br><span class="sub2"><?= $acesso['ontem'][0] ?> acessos</span></div></div>
+    <div class="kpi"><div class="n"><?= $acesso['sete'][1] ?></div><div class="l">pessoas em 7 dias<br><span class="sub2"><?= $acesso['sete'][0] ?> acessos</span></div></div>
+    <div class="kpi"><div class="n"><?= $acesso['total'][1] ?></div><div class="l">pessoas no total<br><span class="sub2"><?= $acesso['total'][0] ?> acessos<?= $acesso['desde'] ? ' desde ' . e(date('d/m', strtotime($acesso['desde']))) : '' ?></span></div></div>
+    <div class="kpi"><div class="n verde"><?= $conv['total'] ?></div><div class="l"><?= $convRotulo ?> no total<br><span class="sub2">hoje <?= $conv['hoje'] ?><?= $pct($conv['hoje'], $acesso['hoje'][1]) ?></span></div></div>
+    <div class="kpi serie" aria-label="Acessos nos últimos 7 dias">
+      <?php foreach ($acesso['serie'] as $dia => [$v, $u]): ?>
+        <div class="barra-dia" title="<?= e(date('d/m', strtotime($dia))) ?>: <?= $v ?> acessos, <?= $u ?> pessoas">
+          <span class="num"><?= $v ?: '' ?></span><i style="height:<?= max(3, round(56 * $v / $maxSerie)) ?>px"></i><span class="dia"><?= e(date('d', strtotime($dia))) ?></span>
+        </div>
+      <?php endforeach; ?>
+    </div>
+  </div>
+  <p class="ed-dica sub-acessos">"Pessoas" conta cada aparelho uma vez por dia, somando os dias. Robôs e prévias de link do WhatsApp não contam.</p>
   <div class="ed-barra">
     <div class="ed-estado">
       <span id="ed-selo" class="tag <?= $ed['pendente'] ? 'alerta' : 'sim' ?>"><?= $ed['pendente'] ? 'rascunho não publicado' : 'no ar igual ao painel' ?></span>

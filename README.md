@@ -38,6 +38,16 @@ pelo painel a partir do modelo.
 4. **Confirmações**: quem respondeu, check-in e planilha.
 5. **Grupo do WhatsApp**: envio, acompanhamento, fora do grupo e lista para o ManyChat. Cruza com as aplicações pelo telefone: quem está no grupo sem nome aparece com o nome da aplicação (vale também para `{nome}` e para o ManyChat; a lista do grupo não é alterada) e quem aplicou mas não está no grupo tem filtro próprio. Aplicação na lixeira do painel de aplicações fica de fora.
 
+## Acessos das páginas
+
+As duas páginas avisam `nm-pocket-app/visita.php` ao abrir (uma linha de script antes do `</body>`;
+na página de aplicação ela foi colocada no próprio `index.html`). O painel mostra, no topo das abas
+das páginas: pessoas e acessos de hoje, ontem, 7 dias e total, os 7 dias em barras e quanto virou
+aplicação/resposta. "Pessoas" = aparelho único por dia (hash de IP + navegador, sem guardar o IP),
+somado entre os dias. Robô e prévia de link não contam. Dados em `visitas.json`. O histórico
+anterior (desde 08/09) veio dos logs do Nginx com `php visita.php importar-logs "<data de corte>"`
+(rodar só uma vez: rodar de novo soma em dobro).
+
 ## Editar a página de aplicação
 
 Os textos da `/nm-pocket/index.html` levam uma marca `data-ed="aNNN"` (invisível para o visitante).

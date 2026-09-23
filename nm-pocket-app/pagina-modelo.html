@@ -375,5 +375,9 @@
   });
 })();
 </script>
+<script>
+// Contador de acessos do painel (não conta na prévia do painel, que não fica em /nm-pocket/).
+(function () { try { if (!/^\/nm-pocket\//.test(location.pathname)) return; var f = new FormData(); f.append('p', 'confirmacao'); navigator.sendBeacon('/nm-pocket-app/visita.php', f); } catch (e) {} })();
+</script>
 </body>
 </html>
