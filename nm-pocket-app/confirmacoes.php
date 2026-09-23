@@ -144,6 +144,23 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && isset($_POST['acao'])) {
         exit(json_encode(['ok' => file_put_contents(NMC_MENSAGEM, nmc_corta($msg, 3000), LOCK_EX) !== false]));
     }
 
+    // Depois de baixar a lista do ManyChat: marca como enviado todo mundo que estava nela.
+    if ($_POST['acao'] === 'marcar_enviados_manychat') {
+        $chaves = json_decode((string) ($_POST['chaves'] ?? '[]'), true);
+        $mapa   = nmc_ler_json(NMC_ENVIOS);
+        $agora  = (new DateTimeImmutable('now'))->format('c');
+        $n = 0;
+        foreach (is_array($chaves) ? $chaves : [] as $ch) {
+            $ch = preg_replace('/[^0-9x]/', '', (string) $ch);
+            if ($ch === '') {
+                continue;
+            }
+            $mapa[$ch] = ['em' => $agora, 'vezes' => (int) ($mapa[$ch]['vezes'] ?? 0) + 1, 'por' => 'manychat'];
+            $n++;
+        }
+        exit(json_encode(['ok' => nmc_salvar_json(NMC_ENVIOS, $mapa), 'n' => $n]));
+    }
+
     if (in_array($_POST['acao'], ['marcar_enviado', 'desmarcar_enviado'], true)) {
         $chave = preg_replace('/[^0-9x]/', '', (string) ($_POST['chave'] ?? ''));
         $mapa  = nmc_ler_json(NMC_ENVIOS);
@@ -337,6 +354,28 @@ if (($_GET['csv'] ?? '') === 'faltam') {
     exit;
 }
 
+// Lista para importar no ManyChat e disparar para quem ainda não respondeu.
+// Telefone igual ao que o WhatsApp mostra no grupo (é o número da conta), com + e país.
+if (($_GET['csv'] ?? '') === 'manychat') {
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename="manychat-nm-pocket-faltam-' . date('Y-m-d-Hi') . '.csv"');
+    $saida = fopen('php://output', 'w');
+    fputcsv($saida, ['phone', 'first_name', 'last_name', 'link_confirmacao', 'situacao']);
+    $rotulos = ['falta_enviar' => 'sem mensagem', 'enviado' => 'recebeu, nao abriu', 'acessou' => 'abriu, nao respondeu'];
+    foreach ($faltam as $f) {
+        if ($f['wa'] === '') {
+            continue;
+        }
+        // Nome do grupo vem com emoji e til ("~Alex Mesquita", "~⚖️"): fica só o que é letra.
+        $limpo = trim(preg_replace('/\s+/u', ' ', preg_replace('/[^\p{L}\s\'\-]/u', ' ', $f['nome'])));
+        $partes = preg_split('/\s+/', $limpo, 2, PREG_SPLIT_NO_EMPTY);
+        $primeiro = isset($partes[0]) && preg_match('/\p{L}{2,}/u', $partes[0]) ? $partes[0] : '';
+        fputcsv($saida, ['+' . $f['wa'], $primeiro, $primeiro !== '' ? ($partes[1] ?? '') : '', $f['link'], $rotulos[$f['etapa']] ?? '']);
+    }
+    fclose($saida);
+    exit;
+}
+
 $aba = in_array($_GET['aba'] ?? '', ['grupo', 'confirmacoes'], true) ? $_GET['aba'] : 'pagina';
 $pag = nmp_dados();
 $pagPendente = $pag['rascunho'] !== $pag['publicado'];
@@ -471,6 +510,9 @@ $token = (string) $_SESSION['token'];
   .ed-dialogo.largo{max-width:560px;width:calc(100vw - 32px)}
   .ed-dialogo .rot-dlg{display:block;font-size:13px;font-weight:600;margin-bottom:6px}
   .ed-dialogo .sub2{margin-bottom:10px}
+  .marcar{display:flex;gap:10px;align-items:center;font-size:14px;margin:4px 0 18px;cursor:pointer}
+  .marcar input{width:17px;height:17px;accent-color:var(--accent)}
+  .ed-dialogo code{color:var(--text)}
   .erro-dlg{color:#ff8a87;font-size:13.5px;margin-bottom:10px}
   .barra-grupo{margin-top:-30px;margin-bottom:24px}
   .painel-lista{margin-bottom:50px}
@@ -718,6 +760,7 @@ $token = (string) $_SESSION['token'];
   <div class="barra-grupo">
     <button class="bt" id="g-adicionar" type="button">+ Adicionar pessoa</button>
     <div class="acoes">
+      <button class="bt pri" id="mc-abrir" type="button">Baixar lista para o ManyChat</button>
       <button class="bt" id="copiar" type="button">Copiar números de quem falta</button>
       <a class="bt" href="?csv=faltam">Baixar planilha de quem falta</a>
     </div>
@@ -741,6 +784,17 @@ $token = (string) $_SESSION['token'];
     <textarea id="g-env-texto" rows="8"></textarea>
     <p class="sub2">Vai abrir o WhatsApp Web com a mensagem pronta; lá é só apertar enviar. Aqui fica marcado como enviado.</p>
     <div class="acoes"><button class="bt" type="button" data-fechar>Cancelar</button><button class="bt pri" type="button" id="g-env-vai">Enviar pelo WhatsApp Web</button></div>
+  </dialog>
+
+  <?php $paraManychat = array_values(array_filter($faltam, static fn($f) => $f['wa'] !== '')); ?>
+  <dialog id="mc-dlg" class="ed-dialogo largo">
+    <h3>Lista para o ManyChat</h3>
+    <p><b><?= count($paraManychat) ?> pessoas</b> que ainda não responderam<?= count($faltam) > count($paraManychat) ? ' (' . (count($faltam) - count($paraManychat)) . ' sem número ficam de fora)' : '' ?>.</p>
+    <p class="sub2">Colunas do arquivo: <code>phone</code> (com + e país, igual ao WhatsApp do grupo), <code>first_name</code>, <code>last_name</code>, <code>link_confirmacao</code> e <code>situacao</code>.
+      Na importação do ManyChat, ligue <code>link_confirmacao</code> a um campo do contato e use esse campo na mensagem do disparo:
+      assim quem abrir a página aparece aqui como "abriu".</p>
+    <label class="marcar"><input type="checkbox" id="mc-marcar"> Marcar essas pessoas como "mensagem enviada" aqui no painel</label>
+    <div class="acoes"><button class="bt" type="button" data-fechar>Cancelar</button><button class="bt pri" type="button" id="mc-baixar">Baixar arquivo</button></div>
   </dialog>
 
   <dialog id="g-dlg-editar" class="ed-dialogo">
@@ -957,6 +1011,20 @@ $token = (string) $_SESSION['token'];
     document.getElementById('g-ed-salvar').addEventListener('click', function () { gravar(trEd ? 'editar_pessoa' : 'adicionar_pessoa'); });
     document.getElementById('g-ed-remover').addEventListener('click', function () {
       if (confirm('Tirar ' + (trEd.dataset.nome || trEd.dataset.fone) + ' da lista do grupo?')) gravar('remover_pessoa');
+    });
+
+    // ── lista para o ManyChat ──
+    var mcDlg = document.getElementById('mc-dlg');
+    var mcChaves = <?= json_encode(array_column($paraManychat, 'chave')) ?>;
+    document.getElementById('mc-abrir').addEventListener('click', function () { mcDlg.showModal(); });
+    document.getElementById('mc-baixar').addEventListener('click', function () {
+      var a = document.createElement('a');
+      a.href = '?csv=manychat'; a.download = '';
+      document.body.appendChild(a); a.click(); a.remove();
+      if (!document.getElementById('mc-marcar').checked) { mcDlg.close(); return; }
+      post({ acao: 'marcar_enviados_manychat', chaves: JSON.stringify(mcChaves) }).then(function () {
+        setTimeout(function () { location.reload(); }, 800);
+      });
     });
 
     // ── copiar números ──

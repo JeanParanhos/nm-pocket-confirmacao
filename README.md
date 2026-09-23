@@ -64,6 +64,8 @@ Os telefones são comparados por DDD + 8 últimos dígitos: o WhatsApp mostra o 
 
 **Link pessoal:** a mensagem enviada pelo painel leva `.../confirmar/?c=<código>`. O código sai do telefone da pessoa com o `segredo.txt`, então não dá para adivinhar o de outra pessoa. Ao abrir, a página avisa o `acesso.php` (registra o acesso e preenche o WhatsApp) e a resposta vai com o código, ligada à pessoa do grupo mesmo que ela digite outro número. Na aba do grupo, cada pessoa aparece em uma etapa: falta enviar → enviada → abriu a página → vai / não vai.
 
+**ManyChat:** na aba do grupo, "Baixar lista para o ManyChat" gera um CSV de quem ainda não respondeu (`phone` com + e país, `first_name`, `last_name`, `link_confirmacao`, `situacao`). Ligando `link_confirmacao` a um campo do contato na importação e usando esse campo na mensagem, quem abrir a página aparece no painel como "abriu". Opcionalmente marca todos como "mensagem enviada".
+
 O painel cruza com `aplicacoes.ndjson` (pelo WhatsApp ou pelo e-mail) e avisa quem confirmou sem ter aplicado.
 
 ## Trocar a senha do painel
