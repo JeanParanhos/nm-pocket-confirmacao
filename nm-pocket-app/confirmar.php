@@ -43,8 +43,13 @@ $erros = [];
 if ($nome === '') {
     $erros['nome'] = 'Digite seu nome.';
 }
-$digitos = nmc_fone($whatsapp);
-if (strlen($digitos) < 10 || strlen($digitos) > 11) {
+$chave = nmc_chave($whatsapp);
+$digitos = preg_replace('/\D/', '', $whatsapp);
+$estrangeiro = str_starts_with($chave, 'x');
+if ($chave === '' || ($estrangeiro && (strlen($digitos) < 8 || strlen($digitos) > 15))) {
+    $erros['whatsapp'] = 'Digite o WhatsApp com DDD.';
+} elseif ($estrangeiro && !str_starts_with($whatsapp, '+')) {
+    // Sem + na frente, só aceitamos número brasileiro (10 ou 11 dígitos).
     $erros['whatsapp'] = 'Digite o WhatsApp com DDD.';
 }
 if ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
@@ -62,7 +67,8 @@ $registro = [
     'criado_em' => (new DateTimeImmutable('now'))->format('c'),
     'nome'      => $nome,
     'whatsapp'  => $whatsapp,
-    'fone'      => $digitos,
+    'fone'      => nmc_wa($whatsapp),
+    'chave'     => $chave,
     'email'     => $email,
     'presenca'  => $presenca,
     'origem'    => [

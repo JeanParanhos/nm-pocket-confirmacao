@@ -28,14 +28,83 @@ function nmc_corta(string $s, int $max): string
     return preg_match('/^.{0,' . $max . '}/us', $s, $m) === 1 ? $m[0] : substr($s, 0, $max);
 }
 
-/** Só os dígitos do WhatsApp, sem o 55 da frente: é a chave da pessoa. */
-function nmc_fone(string $s): string
+/**
+ * Lista de quem está no grupo do WhatsApp: uma pessoa por linha, "nome | telefone".
+ * Fica fora do repositório (são dados pessoais); o painel edita.
+ */
+const NMC_GRUPO        = NMC_DIR . '/grupo.txt';
+
+/**
+ * Chave de comparação do telefone. O WhatsApp mostra o celular sem o 9 da frente
+ * ("62 9912-5180") e a pessoa digita com ele ("62 99912-5180"): no Brasil a chave é
+ * DDD + 8 últimos dígitos. Número de fora (começa com + e não é +55) vale inteiro.
+ */
+function nmc_chave(string $s): string
 {
+    $s = trim($s);
     $d = preg_replace('/\D/', '', $s);
-    if (strlen($d) > 11 && str_starts_with($d, '55')) {
+    if ($d === '') {
+        return '';
+    }
+    if (str_starts_with($s, '+') && !str_starts_with($d, '55')) {
+        return 'x' . $d;
+    }
+    if (strlen($d) >= 12 && str_starts_with($d, '55')) {
         $d = substr($d, 2);
     }
-    return $d;
+    if (strlen($d) === 10 || strlen($d) === 11) {
+        return substr($d, 0, 2) . substr($d, -8);
+    }
+    return 'x' . $d;
+}
+
+/** Número para o wa.me (com país). */
+function nmc_wa(string $s): string
+{
+    $s = trim($s);
+    $d = preg_replace('/\D/', '', $s);
+    if (str_starts_with($s, '+') || (strlen($d) >= 12 && str_starts_with($d, '55'))) {
+        return $d;
+    }
+    return '55' . $d;
+}
+
+/** Lê o grupo: [['nome' => ..., 'fone' => texto, 'chave' => ...], ...] sem repetir número. */
+function nmc_ler_grupo(): array
+{
+    if (!is_file(NMC_GRUPO)) {
+        return [];
+    }
+    return nmc_parse_grupo((string) file_get_contents(NMC_GRUPO));
+}
+
+function nmc_parse_grupo(string $texto): array
+{
+    $itens = [];
+    $vistos = [];
+    foreach (preg_split('/\R/', $texto) as $linha) {
+        $linha = trim($linha);
+        if ($linha === '') {
+            continue;
+        }
+        // "nome | telefone", ou só o telefone, ou só o nome.
+        if (str_contains($linha, '|')) {
+            [$nome, $fone] = array_map('trim', explode('|', $linha, 2));
+        } elseif (preg_match('/^\+?[\d\s().\-]{8,}$/', $linha)) {
+            [$nome, $fone] = ['', $linha];
+        } else {
+            [$nome, $fone] = [$linha, ''];
+        }
+        $chave = $fone !== '' ? nmc_chave($fone) : '';
+        if ($chave !== '') {
+            if (isset($vistos[$chave])) {
+                continue;
+            }
+            $vistos[$chave] = true;
+        }
+        $itens[] = ['nome' => nmc_corta($nome, 120), 'fone' => nmc_corta($fone, 30), 'chave' => $chave];
+    }
+    return $itens;
 }
 
 /** Lê um NDJSON inteiro (linhas inválidas são puladas). */

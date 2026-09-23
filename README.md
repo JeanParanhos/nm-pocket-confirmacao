@@ -33,7 +33,10 @@ Tudo fora do site, em `/home/arlindo/data/nm-pocket/`, junto das aplicações:
 
 - `confirmacoes.ndjson`: uma linha por resposta. Quem responde de novo não é barrado: no painel vale a **última** resposta de cada WhatsApp.
 - `checkin.json`: quem chegou no dia (WhatsApp → hora).
+- `grupo.txt`: quem está no grupo do WhatsApp, uma pessoa por linha (`nome | telefone`). Editável na aba **Grupo do WhatsApp** do painel, que mostra quantos confirmaram e a lista de quem falta, com botão de mensagem, cópia dos números e planilha para disparo. Não vai para o repositório (são telefones).
 - `confirmacao-config.php`: **hash da senha do painel**. Não vai para o repositório.
+
+Os telefones são comparados por DDD + 8 últimos dígitos: o WhatsApp mostra o celular sem o 9 da frente e a pessoa digita com ele. Número de fora do Brasil começa com `+`.
 
 O painel cruza com `aplicacoes.ndjson` (pelo WhatsApp ou pelo e-mail) e avisa quem confirmou sem ter aplicado.
 

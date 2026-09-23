@@ -39,6 +39,24 @@
     }
     .topo p { color: var(--muted); font-size: 15.5px; }
 
+    .video { display: flex; justify-content: center; margin-bottom: 20px; }
+    .video video {
+      width: 100%; max-width: 300px; height: auto; aspect-ratio: 480 / 848; display: block;
+      border-radius: var(--radius); border: 1px solid var(--border); background: #000;
+      box-shadow: 0 20px 50px rgba(0,0,0,0.45);
+    }
+    .recado {
+      background: var(--card); border: 1px solid var(--border); border-left: 3px solid var(--accent);
+      border-radius: var(--radius); padding: 20px 22px; margin-bottom: 14px; font-size: 15.5px;
+    }
+    .recado p + p { margin-top: 10px; }
+    .recado .assina { margin-top: 12px; font-size: 13px; font-weight: 600; color: var(--muted); }
+    .importante {
+      background: rgba(239,83,80,0.08); border: 1px solid rgba(239,83,80,0.3); border-radius: var(--radius);
+      padding: 16px 20px; margin-bottom: 24px; font-size: 14.5px; color: #ffd6d5;
+    }
+    .importante strong { display: block; color: #fff; margin-bottom: 4px; }
+
     .evento {
       background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
       padding: 6px 22px; margin-bottom: 24px;
@@ -116,6 +134,22 @@
       <p>Sua vaga está separada. Confirme abaixo para a gente garantir seu lugar no dia.</p>
     </div>
 
+    <div class="video">
+      <video src="uelicon.mp4" poster="uelicon-capa.jpg" controls playsinline preload="metadata" width="480" height="848"></video>
+    </div>
+
+    <div class="recado">
+      <p>Nesse sábado vamos passar o dia inteiro juntos, com a mão na massa. Vou mostrar pra vocês <strong>todos os funis de vendas que já me fizeram faturar mais de 40 milhões de reais no digital.</strong></p>
+      <p>Chegue até as <strong>8h30</strong> pra gente não se atrasar.</p>
+      <div class="assina">Uelicon Venâncio</div>
+    </div>
+
+    <div class="importante">
+      <strong>Importante: as cadeiras estão contadas.</strong>
+      Se você não for, avise o mais rápido possível: sua vaga vai para outra pessoa que precisa estar lá.
+      Quem faltar sem avisar não terá mais o cadastro aceito nos próximos eventos.
+    </div>
+
     <div class="evento">
       <div class="linha">
         <span class="ic" aria-hidden="true">📅</span>
@@ -123,7 +157,7 @@
       </div>
       <div class="linha">
         <span class="ic" aria-hidden="true">🕘</span>
-        <div><div class="rot">Horário</div><div class="val">Das 9h às 18h</div></div>
+        <div><div class="rot">Horário</div><div class="val">Das 9h às 18h · chegue até as 8h30</div></div>
       </div>
       <div class="linha">
         <span class="ic" aria-hidden="true">📍</span>
@@ -143,7 +177,8 @@
       </div>
       <div class="campo" data-campo="whatsapp">
         <label class="rot" for="whatsapp">WhatsApp</label>
-        <input type="tel" id="whatsapp" name="whatsapp" autocomplete="tel-national" inputmode="numeric" placeholder="(00) 00000-0000" required>
+        <input type="tel" id="whatsapp" name="whatsapp" autocomplete="tel" inputmode="tel" placeholder="(00) 00000-0000" required>
+        <div class="dica" style="font-size:12.5px;color:var(--muted);margin-top:6px">Mora fora do Brasil? Comece com + e o código do país.</div>
         <div class="msg-erro"></div>
       </div>
       <div class="campo" data-campo="email">
@@ -171,7 +206,7 @@
     <div class="fim" id="fim-sim">
       <div class="grande" aria-hidden="true">✅</div>
       <h2>Presença confirmada!</h2>
-      <p>Te esperamos no sábado, 26 de setembro, às 9h, no AlphaPark Hotel. Chegue com uns minutos de antecedência para o credenciamento.</p>
+      <p>Te esperamos no sábado, 26 de setembro, no AlphaPark Hotel. Chegue até as 8h30 pra gente não se atrasar.</p>
       <div class="botoes">
         <a class="btn-sec pri" target="_blank" rel="noopener"
            href="https://calendar.google.com/calendar/render?action=TEMPLATE&text=Imers%C3%A3o+Novos+Milion%C3%A1rios+Pocket&dates=20260926T090000/20260926T180000&ctz=America/Sao_Paulo&location=AlphaPark+Hotel+-+Av.+Alphaville+Flamboyant%2C+3609+-+Goi%C3%A2nia%2FGO&details=Imers%C3%A3o+presencial+com+Uelicon+Ven%C3%A2ncio">Salvar na minha agenda</a>
@@ -195,6 +230,8 @@
   var tel = form.whatsapp;
 
   function mascara(v) {
+    // Número de fora do Brasil: começa com + e não é +55, fica como a pessoa digitou.
+    if (/^\s*\+/.test(v) && !/^\s*\+\s*5(5|$)/.test(v)) return v.replace(/[^\d+\s()\-]/g, '').slice(0, 22);
     var d = v.replace(/\D/g, '');
     if (d.length > 11 && d.indexOf('55') === 0) d = d.slice(2);
     d = d.slice(0, 11);
@@ -226,7 +263,7 @@
     var ok = true;
     if (!form.nome.value.trim()) { erro('nome', 'Digite seu nome.'); ok = false; }
     var d = tel.value.replace(/\D/g, '');
-    if (d.length < 10) { erro('whatsapp', 'Digite o WhatsApp com DDD.'); ok = false; }
+    if (d.length < (/^\s*\+/.test(tel.value) ? 8 : 10)) { erro('whatsapp', 'Digite o WhatsApp com DDD.'); ok = false; }
     var em = form.email.value.trim();
     if (em && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) { erro('email', 'E-mail inválido.'); ok = false; }
     var pres = form.querySelector('[name=presenca]:checked');

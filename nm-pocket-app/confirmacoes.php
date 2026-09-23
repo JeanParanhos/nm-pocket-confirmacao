@@ -81,12 +81,25 @@ button{width:100%;background:#00d4ff;color:#040d18;border:none;border-radius:100
 
 // ─────────────── Check-in (fetch) ───────────────
 if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && isset($_POST['acao'])) {
-    header('Content-Type: application/json; charset=utf-8');
+    if ($_POST['acao'] !== 'salvar_grupo') {
+        header('Content-Type: application/json; charset=utf-8');
+    }
     if (!hash_equals((string) ($_SESSION['token'] ?? ''), (string) ($_POST['token'] ?? ''))) {
         http_response_code(403);
         exit(json_encode(['ok' => false]));
     }
-    $fone = preg_replace('/\D/', '', (string) ($_POST['fone'] ?? ''));
+    // Lista do grupo: vem do formulário da aba Grupo e volta para ela.
+    if ($_POST['acao'] === 'salvar_grupo') {
+        $texto = str_replace("\r\n", "\n", (string) ($_POST['grupo'] ?? ''));
+        if (is_file(NMC_GRUPO)) {
+            @copy(NMC_GRUPO, NMC_GRUPO . '.bak-' . date('Ymd-His'));
+        }
+        $ok = file_put_contents(NMC_GRUPO, $texto, LOCK_EX) !== false;
+        header('Location: ' . $eu . '?aba=grupo&salvo=' . ($ok ? count(nmc_parse_grupo($texto)) : 'erro'), true, 303);
+        exit;
+    }
+
+    $fone = preg_replace('/[^0-9x]/', '', (string) ($_POST['fone'] ?? ''));
     $mapa = nmc_ler_json(NMC_CHECKIN);
     if ($_POST['acao'] === 'checkin' && $fone !== '') {
         $mapa[$fone] = (new DateTimeImmutable('now'))->format('c');
@@ -101,13 +114,13 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && isset($_POST['acao'])) {
 // Uma pessoa = um WhatsApp. O arquivo está em ordem de chegada, então a última linha vence.
 $pessoas = [];
 foreach (nmc_ler_ndjson(NMC_ARQUIVO) as $reg) {
-    $fone = (string) ($reg['fone'] ?? '');
-    if ($fone === '') {
+    $chave = (string) ($reg['chave'] ?? nmc_chave((string) ($reg['whatsapp'] ?? '')));
+    if ($chave === '') {
         continue;
     }
-    $respostas = ($pessoas[$fone]['respostas'] ?? 0) + 1;
-    $pessoas[$fone] = $reg + ['respostas' => $respostas];
-    $pessoas[$fone]['respostas'] = $respostas;
+    $respostas = ($pessoas[$chave]['respostas'] ?? 0) + 1;
+    $pessoas[$chave] = $reg;
+    $pessoas[$chave]['respostas'] = $respostas;
 }
 
 // Quem aplicou (por WhatsApp e por e-mail).
@@ -115,7 +128,7 @@ $aplicouFone  = [];
 $aplicouEmail = [];
 foreach (nmc_ler_ndjson(NMC_APLICACOES) as $ap) {
     $r = $ap['respostas'] ?? [];
-    $f = nmc_fone((string) ($r['whatsapp'] ?? ''));
+    $f = nmc_chave((string) ($r['whatsapp'] ?? ''));
     if ($f !== '') {
         $aplicouFone[$f] = true;
     }
@@ -144,6 +157,7 @@ foreach ($pessoas as $fone => $p) {
 
     $linhas[] = [
         'fone'      => $fone,
+        'wa'        => (string) ($p['fone'] ?? nmc_wa((string) $p['whatsapp'])),
         'data'      => date('d/m H:i', strtotime((string) $p['criado_em'])),
         'ts'        => strtotime((string) $p['criado_em']),
         'nome'      => (string) $p['nome'],
@@ -156,6 +170,52 @@ foreach ($pessoas as $fone => $p) {
     ];
 }
 usort($linhas, static fn($a, $b) => $b['ts'] <=> $a['ts']);
+
+// ─────────────── Grupo do WhatsApp ───────────────
+// Quem está no grupo e ainda não respondeu (nem sim, nem não) é quem falta.
+$grupo = nmc_ler_grupo();
+$gVai = $gNao = $gSemNumero = 0;
+$faltam = [];
+foreach ($grupo as $g) {
+    if ($g['chave'] === '') {
+        $gSemNumero++;
+        $faltam[] = $g + ['wa' => ''];
+        continue;
+    }
+    if (isset($pessoas[$g['chave']])) {
+        ($pessoas[$g['chave']]['presenca'] ?? '') === NMC_PRESENCA[0] ? $gVai++ : $gNao++;
+        continue;
+    }
+    $faltam[] = $g + ['wa' => nmc_wa($g['fone'])];
+}
+$foraDoGrupo = 0;
+$chavesGrupo = array_flip(array_filter(array_column($grupo, 'chave')));
+foreach ($linhas as &$l) {
+    $l['no_grupo'] = isset($chavesGrupo[$l['fone']]);
+    if (!$l['no_grupo']) {
+        $foraDoGrupo++;
+    }
+}
+unset($l);
+
+$linkConfirmar = 'https://iuv.com.br/nm-pocket/confirmar/';
+$msgCobranca   = "Oi! Aqui é da equipe do Uelicon. Sábado é a Imersão Novos Milionários Pocket e as cadeiras estão contadas. "
+               . "Confirma pra gente se você vai? Leva 10 segundos: ";
+
+if (($_GET['csv'] ?? '') === 'faltam') {
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename="nm-pocket-faltam-confirmar-' . date('Y-m-d') . '.csv"');
+    $saida = fopen('php://output', 'w');
+    fwrite($saida, "\xEF\xBB\xBF");
+    fputcsv($saida, ['Nome no grupo', 'Telefone', 'Número (com país)', 'Link de confirmação'], ';');
+    foreach ($faltam as $f) {
+        fputcsv($saida, [$f['nome'], $f['fone'], $f['wa'], $f['wa'] !== '' ? $linkConfirmar . '?whatsapp=' . rawurlencode($f['fone']) : ''], ';');
+    }
+    fclose($saida);
+    exit;
+}
+
+$aba = ($_GET['aba'] ?? '') === 'grupo' ? 'grupo' : 'confirmacoes';
 
 // ─────────────── CSV ───────────────
 if (isset($_GET['csv'])) {
@@ -229,6 +289,23 @@ $token = (string) $_SESSION['token'];
   .vazio{padding:56px 24px;text-align:center;color:var(--muted);font-size:15px}
   .link-conf{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 16px;margin-bottom:22px;font-size:13.5px;color:var(--muted);display:flex;gap:10px;flex-wrap:wrap;align-items:center}
   .link-conf code{color:var(--text);font-size:13px;word-break:break-all}
+  .menu{display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:22px;overflow-x:auto}
+  .menu a{padding:11px 16px;color:var(--muted);text-decoration:none;font-weight:600;font-size:14px;border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap}
+  .menu a span{font-size:12px;background:var(--card2);border-radius:100px;padding:2px 8px;margin-left:4px}
+  .menu a[aria-current]{color:var(--text);border-bottom-color:var(--accent)}
+  .aviso{background:rgba(0,212,255,.08);border:1px solid rgba(0,212,255,.28);border-radius:12px;padding:12px 16px;margin-bottom:20px;font-size:14px}
+  .aviso.alerta{background:rgba(239,83,80,.1);border-color:rgba(239,83,80,.3)}
+  .barra-grupo{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+  .barra-grupo h2,.painel-lista h2{font-family:'Montserrat',sans-serif;font-size:16px;font-weight:800}
+  .barra-grupo h2 small{font-weight:500;color:var(--muted);font-size:12.5px;margin-left:6px}
+  .nota-grupo{font-size:13px;color:var(--muted);margin-bottom:12px}
+  table.estreita{min-width:560px}
+  a.ck{text-decoration:none;display:inline-block}
+  .painel-lista{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:20px 22px;margin-bottom:50px}
+  .painel-lista p{font-size:13px;color:var(--muted);margin:6px 0 12px}
+  .painel-lista code{color:var(--text)}
+  .painel-lista textarea{width:100%;background:var(--bg);border:1px solid rgba(255,255,255,.16);border-radius:10px;padding:12px 14px;color:var(--text);font:13px/1.6 ui-monospace,Menlo,monospace;margin-bottom:12px;resize:vertical}
+  .painel-lista textarea:focus{outline:none;border-color:var(--accent)}
   @media (max-width:760px){.cards{grid-template-columns:repeat(2,1fr)}.topo h1{font-size:21px}}
 </style>
 </head>
@@ -240,12 +317,96 @@ $token = (string) $_SESSION['token'];
       <div class="sub">Imersão Novos Milionários Pocket · 26/09 · AlphaPark Hotel</div>
     </div>
     <div class="acoes">
-      <a class="bt" href="?csv=1">Baixar planilha</a>
       <a class="bt" href="?sair=1">Sair</a>
     </div>
   </div>
 
-  <div class="link-conf">Link para mandar aos aprovados: <code>https://iuv.com.br/nm-pocket/confirmar/</code></div>
+  <nav class="menu" aria-label="Seções">
+    <a href="<?= e($eu) ?>" <?= $aba === 'confirmacoes' ? 'aria-current="page"' : '' ?>>Confirmações <span><?= count($linhas) ?></span></a>
+    <a href="?aba=grupo" <?= $aba === 'grupo' ? 'aria-current="page"' : '' ?>>Grupo do WhatsApp <span><?= count($faltam) ?> faltam</span></a>
+  </nav>
+
+<?php if ($aba === 'grupo'): ?>
+  <?php $salvo = (string) ($_GET['salvo'] ?? ''); ?>
+  <?php if ($salvo === 'erro'): ?>
+    <div class="aviso alerta">Não consegui salvar a lista. Tente de novo.</div>
+  <?php elseif ($salvo !== ''): ?>
+    <div class="aviso">Lista salva: <?= (int) $salvo ?> pessoas no grupo.</div>
+  <?php endif; ?>
+
+  <div class="cards">
+    <div class="kpi"><div class="n"><?= count($grupo) ?></div><div class="l">pessoas no grupo</div></div>
+    <div class="kpi"><div class="n verde"><?= $gVai ?></div><div class="l">confirmaram que vão</div></div>
+    <div class="kpi"><div class="n verm"><?= $gNao ?></div><div class="l">avisaram que não vão</div></div>
+    <div class="kpi"><div class="n amar"><?= count($faltam) ?></div><div class="l">faltam responder</div></div>
+  </div>
+
+  <?php if ($grupo === []): ?>
+    <div class="tabela-box"><div class="vazio">A lista do grupo está vazia. Cole os números no campo lá embaixo.</div></div>
+  <?php else: ?>
+  <div class="barra-grupo">
+    <h2>Quem falta responder <small><?= count($faltam) ?> de <?= count($grupo) ?></small></h2>
+    <div class="acoes">
+      <button class="bt" id="copiar" type="button">Copiar números</button>
+      <a class="bt pri" href="?csv=faltam">Baixar planilha para disparo</a>
+    </div>
+  </div>
+  <?php if ($foraDoGrupo > 0): ?>
+    <p class="nota-grupo"><?= $foraDoGrupo ?> confirmação(ões) veio de número que não está na lista do grupo. Veja na aba Confirmações ("fora do grupo").</p>
+  <?php endif; ?>
+  <div class="tabela-box">
+    <?php if ($faltam === []): ?>
+      <div class="vazio">Todo mundo do grupo já respondeu. 🎉</div>
+    <?php else: ?>
+    <div class="rolagem">
+      <table class="estreita">
+        <thead><tr><th>Nome no grupo</th><th>Telefone</th><th>Cobrar</th></tr></thead>
+        <tbody>
+        <?php foreach ($faltam as $f): ?>
+          <tr>
+            <td class="nome"><?= $f['nome'] !== '' ? e($f['nome']) : '<span class="sub2">sem nome</span>' ?></td>
+            <td><?= $f['fone'] !== '' ? e($f['fone']) : '<span class="tag alerta">sem número: conferir no grupo</span>' ?></td>
+            <td>
+              <?php if ($f['wa'] !== ''): ?>
+                <a class="ck" target="_blank" rel="noopener"
+                   href="https://wa.me/<?= e($f['wa']) ?>?text=<?= rawurlencode($msgCobranca . $linkConfirmar . '?whatsapp=' . rawurlencode($f['fone'])) ?>">Mandar mensagem</a>
+              <?php endif; ?>
+            </td>
+          </tr>
+        <?php endforeach; ?>
+        </tbody>
+      </table>
+    </div>
+    <?php endif; ?>
+  </div>
+  <?php endif; ?>
+
+  <form method="post" class="painel-lista">
+    <h2>Lista do grupo</h2>
+    <p>Uma pessoa por linha, no formato <code>nome | telefone</code>. Pode colar só o telefone. Número repetido conta uma vez. Número de fora do Brasil começa com + e o código do país.</p>
+    <textarea name="grupo" rows="14" spellcheck="false"><?= e(is_file(NMC_GRUPO) ? (string) file_get_contents(NMC_GRUPO) : '') ?></textarea>
+    <input type="hidden" name="acao" value="salvar_grupo">
+    <input type="hidden" name="token" value="<?= e($token) ?>">
+    <button class="bt pri" type="submit">Salvar lista</button>
+  </form>
+
+  <script>
+  (function () {
+    var bt = document.getElementById('copiar');
+    if (!bt) return;
+    var numeros = <?= json_encode(array_values(array_filter(array_column($faltam, 'wa')))) ?>;
+    bt.addEventListener('click', function () {
+      navigator.clipboard.writeText(numeros.join('\n')).then(function () {
+        bt.textContent = '✓ ' + numeros.length + ' números copiados';
+        setTimeout(function () { bt.textContent = 'Copiar números'; }, 2500);
+      });
+    });
+  })();
+  </script>
+<?php else: ?>
+
+  <div class="link-conf">Link para mandar aos aprovados: <code><?= e($linkConfirmar) ?></code>
+    <a class="bt" href="?csv=1" style="margin-left:auto">Baixar planilha</a></div>
 
   <div class="cards">
     <div class="kpi"><div class="n verde"><?= $vao ?></div><div class="l">vão participar</div></div>
@@ -274,10 +435,11 @@ $token = (string) $_SESSION['token'];
         <tbody id="corpo">
         <?php foreach ($linhas as $l): ?>
           <tr data-vai="<?= $l['vai'] ? '1' : '0' ?>" data-aplicou="<?= $l['aplicou'] ? '1' : '0' ?>"
-              data-busca="<?= e(strtolower($l['nome'] . ' ' . $l['fone'] . ' ' . $l['email'])) ?>">
+              data-busca="<?= e(strtolower($l['nome'] . ' ' . $l['wa'] . ' ' . preg_replace('/\D/', '', $l['whatsapp']) . ' ' . $l['email'])) ?>">
             <td><?= e($l['data']) ?><?php if ($l['respostas'] > 1): ?><div class="sub2">respondeu <?= $l['respostas'] ?> vezes</div><?php endif; ?></td>
             <td><div class="nome"><?= e($l['nome']) ?></div><?php if ($l['email'] !== ''): ?><div class="sub2"><?= e($l['email']) ?></div><?php endif; ?></td>
-            <td><a class="wa" href="https://wa.me/55<?= e($l['fone']) ?>" target="_blank" rel="noopener"><?= e($l['whatsapp']) ?></a></td>
+            <td><a class="wa" href="https://wa.me/<?= e($l['wa']) ?>" target="_blank" rel="noopener"><?= e($l['whatsapp']) ?></a>
+              <?php if ($grupo !== [] && !$l['no_grupo']): ?><div class="sub2">fora do grupo</div><?php endif; ?></td>
             <td><?= $l['vai'] ? '<span class="tag sim">✓ Vai</span>' : '<span class="tag nao">✕ Não vai</span>' ?></td>
             <td><?= $l['aplicou'] ? '<span class="tag sim">Sim</span>' : '<span class="tag alerta">⚠ Não achamos</span>' ?></td>
             <td>
@@ -293,6 +455,7 @@ $token = (string) $_SESSION['token'];
     </div>
     <?php endif; ?>
   </div>
+<?php endif; ?>
 </div>
 
 <script>
