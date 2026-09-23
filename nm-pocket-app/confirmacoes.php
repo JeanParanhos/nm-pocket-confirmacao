@@ -298,6 +298,7 @@ $assentos = nmc_ler_json(NMC_ASSENTOS);
 $vao = $naoVao = $chegaram = $semAplicacao = 0;
 $linhas = [];
 foreach ($pessoas as $fone => $p) {
+    $fone = (string) $fone; // chave só de dígitos vira int como índice de array no PHP
     $vai     = ($p['presenca'] ?? '') === NMC_PRESENCA[0];
     $aplicou = isset($aplicouFone[$fone]) || ($p['email'] !== '' && isset($aplicouEmail[$p['email']]));
     $chegou  = isset($checkin[$fone]);
@@ -384,6 +385,7 @@ foreach ($grupo as $g) {
 $chavesGrupo = array_flip(array_filter(array_column($grupo, 'chave')));
 $aplicaramFora = [];
 foreach ($aplicacaoPorChave as $ch => $a) {
+    $ch = (string) $ch;
     // Quem já respondeu a confirmação aparece em "Responderam fora do grupo", não aqui de novo.
     if (!isset($chavesGrupo[$ch]) && !isset($pessoas[$ch])) {
         $aplicaramFora[] = $a + ['chave' => $ch, 'wa' => nmc_wa($a['whatsapp'])];
