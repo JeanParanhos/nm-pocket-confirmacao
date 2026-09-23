@@ -107,8 +107,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && isset($_POST['acao'])) {
         if ($_POST['acao'] !== 'remover_pessoa' && $nome === '' && $tel === '') {
             exit(json_encode(['ok' => false, 'erro' => 'Preencha o nome ou o telefone.']));
         }
-        if ($tel !== '' && nmc_chave($tel) === '') {
-            exit(json_encode(['ok' => false, 'erro' => 'Telefone inválido.']));
+        if ($tel !== '' && !nmc_fone_valido($tel)) {
+            exit(json_encode(['ok' => false, 'erro' => 'Telefone inválido: use DDD + número, ou + e o código do país.']));
         }
         $linhas = is_file(NMC_GRUPO) ? preg_split('/\R/', (string) file_get_contents(NMC_GRUPO)) : [];
         $nova   = trim($nome . ' | ' . $tel);
@@ -128,7 +128,15 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && isset($_POST['acao'])) {
         }
         @copy(NMC_GRUPO, NMC_GRUPO . '.bak-' . date('Ymd-His'));
         $ok = file_put_contents(NMC_GRUPO, rtrim(implode("\n", $linhas)) . "\n", LOCK_EX) !== false;
-        exit(json_encode(['ok' => $ok]));
+        // Devolve o que a linha passa a ser, para a tela se atualizar sem recarregar.
+        $ch = $tel !== '' ? nmc_chave($tel) : '';
+        exit(json_encode([
+            'ok'    => $ok,
+            'antes' => $nova,
+            'chave' => $ch,
+            'wa'    => $ch !== '' ? nmc_wa($tel) : '',
+            'link'  => $ch !== '' ? 'https://iuv.com.br/nm-pocket/confirmar/?c=' . nmc_codigo($ch) : '',
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
     }
 
     if ($_POST['acao'] === 'salvar_mensagem') {
@@ -442,6 +450,16 @@ $token = (string) $_SESSION['token'];
   td.acoes-linha{white-space:nowrap;text-align:right}
   .lapis{background:none;border:1px solid transparent;color:var(--muted);font-size:15px;border-radius:8px;padding:6px 9px;cursor:pointer;margin-left:4px}
   .lapis:hover{color:var(--text);border-color:var(--border);background:var(--card2)}
+  .inline{display:inline-flex;align-items:center;gap:6px;max-width:100%}
+  .inline .v{overflow:hidden;text-overflow:ellipsis}
+  .lapis-in{background:none;border:none;color:var(--muted);font-size:13px;cursor:pointer;padding:3px 6px;border-radius:6px;opacity:.45;transition:opacity .12s,background .12s}
+  tr:hover .lapis-in,.lapis-in:focus-visible{opacity:1}
+  .lapis-in:hover{background:var(--card2);color:var(--text)}
+  .inline.editando .v,.inline.editando .lapis-in{display:none}
+  .campo-in{background:var(--bg);border:1px solid var(--accent);border-radius:8px;padding:7px 10px;color:var(--text);font:14px 'Inter',sans-serif;width:230px;max-width:100%;outline:none}
+  .campo-in.erro{border-color:#ef5350}
+  .erro-in{color:#ff8a87;font-size:12px;font-weight:500}
+  .inline.salvo .v{color:#4ade80;transition:color .3s}
   tr.acabou-de-enviar{background:rgba(0,212,255,.05)}
   details.painel-msg,details.painel-lista{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px 20px;margin-bottom:20px}
   details summary{cursor:pointer;font-family:'Montserrat',sans-serif;font-weight:800;font-size:15px}
@@ -651,8 +669,8 @@ $token = (string) $_SESSION['token'];
               data-nome="<?= e($p['nome']) ?>" data-fone="<?= e($p['fone']) ?>"
               data-chave="<?= e($p['chave']) ?>" data-wa="<?= e($p['wa']) ?>" data-link="<?= e($p['link']) ?>"
               data-busca="<?= e(strtolower($p['nome'] . ' ' . preg_replace('/\D/', '', $p['fone']))) ?>">
-            <td class="nome"><span class="v-nome"><?= $p['nome'] !== '' ? e($p['nome']) : '<span class="sub2">sem nome</span>' ?></span></td>
-            <td><span class="v-fone"><?= $p['fone'] !== '' ? e($p['fone']) : '<span class="tag alerta">sem número</span>' ?></span></td>
+            <td class="nome"><span class="inline" data-campo="nome"><span class="v"><?= $p['nome'] !== '' ? e($p['nome']) : '<span class="sub2">sem nome</span>' ?></span><button class="lapis-in" type="button" title="Editar nome" aria-label="Editar nome">✎</button></span></td>
+            <td><span class="inline" data-campo="fone"><span class="v"><?= $p['fone'] !== '' ? e($p['fone']) : '<span class="tag alerta">sem número</span>' ?></span><button class="lapis-in" type="button" title="Editar telefone" aria-label="Editar telefone">✎</button></span></td>
             <td class="situacao">
               <?php
                 echo match ($p['etapa']) {
@@ -673,7 +691,7 @@ $token = (string) $_SESSION['token'];
               <?php if ($p['wa'] !== '' && !in_array($p['etapa'], ['vai', 'nao'], true)): ?>
                 <button class="ck g-enviar" type="button"><?= $p['enviado'] !== '' ? 'Enviar de novo' : 'Enviar' ?></button>
               <?php endif; ?>
-              <button class="lapis g-editar" type="button" title="Editar nome e telefone" aria-label="Editar nome e telefone">✎</button>
+              <button class="lapis g-remover" type="button" title="Tirar do grupo" aria-label="Tirar do grupo">🗑</button>
             </td>
           </tr>
         <?php endforeach; ?>
@@ -799,9 +817,78 @@ $token = (string) $_SESSION['token'];
         dlgEnv.showModal();
         return;
       }
-      var ed = e.target.closest('.g-editar');
-      if (ed) abrirEdicao(ed.closest('tr'));
+      var lap = e.target.closest('.lapis-in');
+      if (lap) { editarInline(lap.closest('.inline')); return; }
+      var rem = e.target.closest('.g-remover');
+      if (rem) {
+        var tr = rem.closest('tr');
+        if (!confirm('Tirar ' + (tr.dataset.nome || tr.dataset.fone) + ' da lista do grupo?')) return;
+        post({ acao: 'remover_pessoa', linha: tr.dataset.linha, antes: tr.dataset.antes }).then(function (j) {
+          if (!j.ok) { alert(j.erro || 'Não consegui tirar.'); return; }
+          location.reload(); // as linhas de baixo mudam de posição no arquivo
+        });
+      }
     });
+
+    // ── edição direta: clica no lápis, o texto vira campo; Enter salva, Esc cancela ──
+    function editarInline(caixa) {
+      if (caixa.classList.contains('editando')) return;
+      var tr = caixa.closest('tr');
+      var campo = caixa.dataset.campo;
+      var v = caixa.querySelector('.v');
+      var inp = document.createElement('input');
+      inp.type = campo === 'fone' ? 'tel' : 'text';
+      inp.maxLength = campo === 'fone' ? 30 : 120;
+      inp.value = tr.dataset[campo];
+      inp.placeholder = campo === 'fone' ? '+55 62 99999-0000' : 'Nome';
+      inp.className = 'campo-in';
+      caixa.classList.add('editando');
+      caixa.appendChild(inp);
+      inp.focus(); inp.select();
+      var feito = false;
+
+      function fechar() {
+        feito = true;
+        inp.remove();
+        var m = caixa.querySelector('.erro-in'); if (m) m.remove();
+        caixa.classList.remove('editando');
+      }
+      function salvar() {
+        if (feito) return;
+        var novo = { nome: tr.dataset.nome, fone: tr.dataset.fone };
+        novo[campo] = inp.value.trim();
+        if (novo[campo] === tr.dataset[campo]) { fechar(); return; }
+        feito = true; inp.disabled = true;
+        post({ acao: 'editar_pessoa', linha: tr.dataset.linha, antes: tr.dataset.antes, nome: novo.nome, fone: novo.fone })
+          .then(function (j) {
+            if (!j.ok) {
+              feito = false; inp.disabled = false; inp.classList.add('erro');
+              var msg = caixa.querySelector('.erro-in') || caixa.appendChild(document.createElement('span'));
+              msg.className = 'erro-in'; msg.textContent = (j.erro || 'Não consegui salvar.') + ' Esc desfaz.';
+              return;
+            }
+            var velho = caixa.querySelector('.erro-in'); if (velho) velho.remove();
+            tr.dataset.antes = j.antes;
+            tr.dataset[campo] = novo[campo];
+            v.textContent = novo[campo] || (campo === 'nome' ? 'sem nome' : 'sem número');
+            if (campo === 'fone') {
+              // Telefone novo muda o link pessoal e o número do envio.
+              if (!tr.querySelector('.g-enviar') && j.wa) { location.reload(); return; }
+              tr.dataset.chave = j.chave; tr.dataset.wa = j.wa; tr.dataset.link = j.link;
+            }
+            tr.dataset.busca = (tr.dataset.nome + ' ' + tr.dataset.fone.replace(/\D/g, '')).toLowerCase();
+            fechar();
+            caixa.classList.add('salvo');
+            setTimeout(function () { caixa.classList.remove('salvo'); }, 1500);
+          })
+          .catch(function () { feito = false; inp.disabled = false; inp.classList.add('erro'); });
+      }
+      inp.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); salvar(); }
+        if (e.key === 'Escape') { e.preventDefault(); fechar(); }
+      });
+      inp.addEventListener('blur', salvar);
+    }
     document.getElementById('g-env-vai').addEventListener('click', function () {
       var texto = document.getElementById('g-env-texto').value;
       // Mesma aba do WhatsApp Web para todos os envios, em vez de abrir uma nova a cada pessoa.

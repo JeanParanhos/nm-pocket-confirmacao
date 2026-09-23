@@ -58,6 +58,20 @@ function nmc_chave(string $s): string
     return 'x' . $d;
 }
 
+/** Telefone que dá para usar: brasileiro com DDD (10 ou 11 dígitos) ou de fora com + e 8 a 15 dígitos. */
+function nmc_fone_valido(string $s): bool
+{
+    $ch = nmc_chave($s);
+    if ($ch === '') {
+        return false;
+    }
+    if (!str_starts_with($ch, 'x')) {
+        return true;
+    }
+    $n = strlen($ch) - 1;
+    return str_starts_with(trim($s), '+') && $n >= 8 && $n <= 15;
+}
+
 /** Número para o wa.me (com país). */
 function nmc_wa(string $s): string
 {
