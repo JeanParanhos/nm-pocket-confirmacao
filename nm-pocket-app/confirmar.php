@@ -71,6 +71,8 @@ $registro = [
     'chave'     => $chave,
     'email'     => $email,
     'presenca'  => $presenca,
+    // Veio pelo link pessoal? Liga a resposta à pessoa do grupo, mesmo que ela digite outro número.
+    'grupo_chave' => (nmc_grupo_por_codigo((string) ($_POST['c'] ?? ''))['chave'] ?? ''),
     'origem'    => [
         'ip'          => $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? '',
         'user_agent'  => nmc_corta((string) ($_SERVER['HTTP_USER_AGENT'] ?? ''), 300),

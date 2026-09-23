@@ -248,6 +248,16 @@
   if (q.get('whatsapp')) tel.value = mascara(q.get('whatsapp'));
   if (q.get('email')) form.email.value = q.get('email');
 
+  // Link pessoal do painel (?c=código): marca que a pessoa abriu a página e já traz o WhatsApp dela.
+  var codigo = /^[a-f0-9]{10}$/.test(q.get('c') || '') ? q.get('c') : '';
+  if (codigo) {
+    var fc = new FormData(); fc.append('c', codigo);
+    fetch('/nm-pocket-app/acesso.php', { method: 'POST', body: fc })
+      .then(function (r) { return r.json(); })
+      .then(function (j) { if (j.ok && j.whatsapp && !tel.value) tel.value = mascara(j.whatsapp); })
+      .catch(function () {});
+  }
+
   function erro(campo, msg) {
     var el = form.querySelector('[data-campo="' + campo + '"]');
     if (!el) return;
@@ -279,6 +289,7 @@
 
     var dados = new FormData(form);
     dados.append('landing_url', location.href);
+    if (codigo) dados.append('c', codigo);
 
     fetch('/nm-pocket-app/confirmar.php', { method: 'POST', body: dados })
       .then(function (r) { return r.json().then(function (j) { return { status: r.status, j: j }; }); })

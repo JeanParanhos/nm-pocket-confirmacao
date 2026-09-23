@@ -20,6 +20,7 @@ A página aceita os dados já preenchidos pelo link, para mandar pronto no Whats
 nm-pocket-app/pagina-modelo.html      modelo da página (estrutura, visual e textos padrão)
 nm-pocket-app/pagina.php              monta a página: modelo + textos editados no painel
 nm-pocket-app/confirmar.php           recebe o envio e grava
+nm-pocket-app/acesso.php              registra quem abriu a página pelo link pessoal (?c=código)
 nm-pocket-app/confirmacoes.php        painel: página, confirmações, grupo, check-in, planilhas
 nm-pocket-app/confirmacao-comum.php   caminhos e funções usados por todos
 nm-pocket-app/config.exemplo.php      modelo do arquivo de senha
@@ -52,10 +53,16 @@ Tudo fora do site, em `/home/arlindo/data/nm-pocket/`, junto das aplicações:
 - `checkin.json`: quem chegou no dia (WhatsApp → hora).
 - `grupo.txt`: quem está no grupo do WhatsApp, uma pessoa por linha (`nome | telefone`). Editável na aba **Grupo do WhatsApp** do painel, que mostra quantos confirmaram e a lista de quem falta, com botão de mensagem, cópia dos números e planilha para disparo. Não vai para o repositório (são telefones).
 - `confirmacao-config.php`: **hash da senha do painel**. Não vai para o repositório.
+- `mensagem.txt`: a mensagem que o painel manda para o grupo (`{link}` e `{nome}` são trocados por pessoa).
+- `envios.json`: para quem a mensagem foi enviada pelo painel e quando.
+- `acessos.json`: quem abriu a página pelo link pessoal e quando.
+- `segredo.txt`: segredo que gera o código de cada link pessoal. Trocar invalida os links já enviados.
 - `pagina.json`: os textos editados no painel (rascunho e publicado) e o histórico de publicações.
 - `pagina-backups/`: cada versão da página antes de uma publicação.
 
 Os telefones são comparados por DDD + 8 últimos dígitos: o WhatsApp mostra o celular sem o 9 da frente e a pessoa digita com ele. Número de fora do Brasil começa com `+`.
+
+**Link pessoal:** a mensagem enviada pelo painel leva `.../confirmar/?c=<código>`. O código sai do telefone da pessoa com o `segredo.txt`, então não dá para adivinhar o de outra pessoa. Ao abrir, a página avisa o `acesso.php` (registra o acesso e preenche o WhatsApp) e a resposta vai com o código, ligada à pessoa do grupo mesmo que ela digite outro número. Na aba do grupo, cada pessoa aparece em uma etapa: falta enviar → enviada → abriu a página → vai / não vai.
 
 O painel cruza com `aplicacoes.ndjson` (pelo WhatsApp ou pelo e-mail) e avisa quem confirmou sem ter aplicado.
 

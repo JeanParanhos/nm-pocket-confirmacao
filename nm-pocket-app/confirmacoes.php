@@ -100,6 +100,54 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && isset($_POST['acao'])) {
         exit;
     }
 
+    // Grupo: editar, acrescentar e tirar uma pessoa (linha do grupo.txt).
+    if (in_array($_POST['acao'], ['editar_pessoa', 'adicionar_pessoa', 'remover_pessoa'], true)) {
+        $nome = str_replace('|', '/', nmc_corta(trim((string) ($_POST['nome'] ?? '')), 120));
+        $tel  = nmc_corta(trim((string) ($_POST['fone'] ?? '')), 30);
+        if ($_POST['acao'] !== 'remover_pessoa' && $nome === '' && $tel === '') {
+            exit(json_encode(['ok' => false, 'erro' => 'Preencha o nome ou o telefone.']));
+        }
+        if ($tel !== '' && nmc_chave($tel) === '') {
+            exit(json_encode(['ok' => false, 'erro' => 'Telefone inválido.']));
+        }
+        $linhas = is_file(NMC_GRUPO) ? preg_split('/\R/', (string) file_get_contents(NMC_GRUPO)) : [];
+        $nova   = trim($nome . ' | ' . $tel);
+        if ($_POST['acao'] === 'adicionar_pessoa') {
+            $linhas[] = $nova;
+        } else {
+            // A linha precisa ser a mesma que a tela mostrou: se alguém mexeu no meio, recusa.
+            $i = (int) ($_POST['linha'] ?? -1);
+            if (!isset($linhas[$i]) || trim($linhas[$i]) !== trim((string) ($_POST['antes'] ?? ''))) {
+                exit(json_encode(['ok' => false, 'erro' => 'A lista mudou enquanto você editava. Recarregue a página.']));
+            }
+            if ($_POST['acao'] === 'remover_pessoa') {
+                unset($linhas[$i]);
+            } else {
+                $linhas[$i] = $nova;
+            }
+        }
+        @copy(NMC_GRUPO, NMC_GRUPO . '.bak-' . date('Ymd-His'));
+        $ok = file_put_contents(NMC_GRUPO, rtrim(implode("\n", $linhas)) . "\n", LOCK_EX) !== false;
+        exit(json_encode(['ok' => $ok]));
+    }
+
+    if ($_POST['acao'] === 'salvar_mensagem') {
+        $msg = trim(str_replace("\r\n", "\n", (string) ($_POST['mensagem'] ?? '')));
+        exit(json_encode(['ok' => file_put_contents(NMC_MENSAGEM, nmc_corta($msg, 3000), LOCK_EX) !== false]));
+    }
+
+    if (in_array($_POST['acao'], ['marcar_enviado', 'desmarcar_enviado'], true)) {
+        $chave = preg_replace('/[^0-9x]/', '', (string) ($_POST['chave'] ?? ''));
+        $mapa  = nmc_ler_json(NMC_ENVIOS);
+        if ($_POST['acao'] === 'marcar_enviado' && $chave !== '') {
+            $antes = $mapa[$chave] ?? ['vezes' => 0];
+            $mapa[$chave] = ['em' => (new DateTimeImmutable('now'))->format('c'), 'vezes' => (int) $antes['vezes'] + 1];
+        } else {
+            unset($mapa[$chave]);
+        }
+        exit(json_encode(['ok' => nmc_salvar_json(NMC_ENVIOS, $mapa), 'em' => date('d/m H:i')]));
+    }
+
     // Página de confirmação: rascunho, publicar, descartar.
     if (in_array($_POST['acao'], ['salvar_pagina', 'publicar_pagina', 'descartar_pagina'], true)) {
         $d = nmp_dados();
@@ -148,10 +196,14 @@ if (isset($_GET['previa'])) {
 // ─────────────── Dados ───────────────
 // Uma pessoa = um WhatsApp. O arquivo está em ordem de chegada, então a última linha vence.
 $pessoas = [];
+$porGrupo = []; // resposta que veio pelo link pessoal: chave do grupo => presença
 foreach (nmc_ler_ndjson(NMC_ARQUIVO) as $reg) {
     $chave = (string) ($reg['chave'] ?? nmc_chave((string) ($reg['whatsapp'] ?? '')));
     if ($chave === '') {
         continue;
+    }
+    if (($reg['grupo_chave'] ?? '') !== '') {
+        $porGrupo[$reg['grupo_chave']] = (string) $reg['presenca'];
     }
     $respostas = ($pessoas[$chave]['respostas'] ?? 0) + 1;
     $pessoas[$chave] = $reg;
@@ -201,41 +253,68 @@ foreach ($pessoas as $fone => $p) {
         'vai'       => $vai,
         'aplicou'   => $aplicou,
         'respostas' => (int) $p['respostas'],
+        'grupo'     => (string) ($p['grupo_chave'] ?? ''),
         'checkin'   => $chegou ? date('d/m H:i', strtotime($checkin[$fone])) : '',
     ];
 }
 usort($linhas, static fn($a, $b) => $b['ts'] <=> $a['ts']);
 
 // ─────────────── Grupo do WhatsApp ───────────────
-// Quem está no grupo e ainda não respondeu (nem sim, nem não) é quem falta.
-$grupo = nmc_ler_grupo();
-$gVai = $gNao = $gSemNumero = 0;
+// Cada pessoa anda por: mensagem enviada → acessou a página → vai / não vai.
+$linkConfirmar = 'https://iuv.com.br/nm-pocket/confirmar/';
+$grupo   = nmc_ler_grupo();
+$envios  = nmc_ler_json(NMC_ENVIOS);
+$acessos = nmc_ler_json(NMC_ACESSOS);
+$gVai = $gNao = $gEnviados = $gAcessaram = 0;
 $faltam = [];
+$gente  = [];
 foreach ($grupo as $g) {
-    if ($g['chave'] === '') {
-        $gSemNumero++;
-        $faltam[] = $g + ['wa' => ''];
-        continue;
+    $ch = $g['chave'];
+    $presenca = '';
+    if ($ch !== '') {
+        $presenca = $porGrupo[$ch] ?? (string) ($pessoas[$ch]['presenca'] ?? '');
     }
-    if (isset($pessoas[$g['chave']])) {
-        ($pessoas[$g['chave']]['presenca'] ?? '') === NMC_PRESENCA[0] ? $gVai++ : $gNao++;
-        continue;
+    $etapa = match (true) {
+        $ch === ''                    => 'sem_numero',
+        $presenca === NMC_PRESENCA[0] => 'vai',
+        $presenca !== ''              => 'nao',
+        isset($acessos[$ch])          => 'acessou',
+        isset($envios[$ch])           => 'enviado',
+        default                       => 'falta_enviar',
+    };
+    if ($etapa === 'vai') {
+        $gVai++;
+    } elseif ($etapa === 'nao') {
+        $gNao++;
     }
-    $faltam[] = $g + ['wa' => nmc_wa($g['fone'])];
+    if ($ch !== '' && isset($envios[$ch])) {
+        $gEnviados++;
+    }
+    if ($ch !== '' && isset($acessos[$ch])) {
+        $gAcessaram++;
+    }
+    $item = $g + [
+        'wa'      => $ch !== '' ? nmc_wa($g['fone']) : '',
+        'link'    => $ch !== '' ? $linkConfirmar . '?c=' . nmc_codigo($ch) : '',
+        'etapa'   => $etapa,
+        'enviado' => isset($envios[$ch]) ? date('d/m H:i', strtotime($envios[$ch]['em'])) : '',
+        'acessou' => isset($acessos[$ch]) ? date('d/m H:i', strtotime($acessos[$ch]['ultimo'])) : '',
+    ];
+    $gente[] = $item;
+    if (!in_array($etapa, ['vai', 'nao'], true)) {
+        $faltam[] = $item;
+    }
 }
 $foraDoGrupo = 0;
 $chavesGrupo = array_flip(array_filter(array_column($grupo, 'chave')));
 foreach ($linhas as &$l) {
-    $l['no_grupo'] = isset($chavesGrupo[$l['fone']]);
+    $l['no_grupo'] = isset($chavesGrupo[$l['fone']]) || $l['grupo'] !== '';
     if (!$l['no_grupo']) {
         $foraDoGrupo++;
     }
 }
 unset($l);
-
-$linkConfirmar = 'https://iuv.com.br/nm-pocket/confirmar/';
-$msgCobranca   = "Oi! Aqui é da equipe do Uelicon. Sábado é a Imersão Novos Milionários Pocket e as cadeiras estão contadas. "
-               . "Confirma pra gente se você vai? Leva 10 segundos: ";
+$mensagem = nmc_mensagem();
 
 if (($_GET['csv'] ?? '') === 'faltam') {
     header('Content-Type: text/csv; charset=utf-8');
@@ -244,7 +323,7 @@ if (($_GET['csv'] ?? '') === 'faltam') {
     fwrite($saida, "\xEF\xBB\xBF");
     fputcsv($saida, ['Nome no grupo', 'Telefone', 'Número (com país)', 'Link de confirmação'], ';');
     foreach ($faltam as $f) {
-        fputcsv($saida, [$f['nome'], $f['fone'], $f['wa'], $f['wa'] !== '' ? $linkConfirmar . '?whatsapp=' . rawurlencode($f['fone']) : ''], ';');
+        fputcsv($saida, [$f['nome'], $f['fone'], $f['wa'], $f['link']], ';');
     }
     fclose($saida);
     exit;
@@ -357,6 +436,27 @@ $token = (string) $_SESSION['token'];
   .ed-dialogo h3{font-family:'Montserrat',sans-serif;font-size:18px;font-weight:900;margin-bottom:8px}
   .ed-dialogo p{font-size:14px;color:var(--muted);margin-bottom:18px;word-break:break-word}
   .ed-dialogo .acoes{justify-content:flex-end}
+  .cards-6{grid-template-columns:repeat(6,1fr)}
+  .tag.azul{background:rgba(0,212,255,.14);color:#6fe3ff}
+  .tag.cinza{background:rgba(255,255,255,.08);color:#c9d6e3}
+  td.acoes-linha{white-space:nowrap;text-align:right}
+  .lapis{background:none;border:1px solid transparent;color:var(--muted);font-size:15px;border-radius:8px;padding:6px 9px;cursor:pointer;margin-left:4px}
+  .lapis:hover{color:var(--text);border-color:var(--border);background:var(--card2)}
+  tr.acabou-de-enviar{background:rgba(0,212,255,.05)}
+  details.painel-msg,details.painel-lista{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px 20px;margin-bottom:20px}
+  details summary{cursor:pointer;font-family:'Montserrat',sans-serif;font-weight:800;font-size:15px}
+  details[open] summary{margin-bottom:6px}
+  .painel-msg p{font-size:13px;color:var(--muted);margin:6px 0 12px}
+  .painel-msg code{color:var(--text)}
+  .painel-msg textarea,.ed-dialogo textarea,.ed-dialogo input{width:100%;background:var(--bg);border:1px solid rgba(255,255,255,.16);border-radius:10px;padding:12px 14px;color:var(--text);font:14px/1.55 'Inter',sans-serif;margin-bottom:12px;resize:vertical;outline:none}
+  .painel-msg textarea:focus,.ed-dialogo textarea:focus,.ed-dialogo input:focus{border-color:var(--accent)}
+  .ed-dialogo.largo{max-width:560px;width:calc(100vw - 32px)}
+  .ed-dialogo .rot-dlg{display:block;font-size:13px;font-weight:600;margin-bottom:6px}
+  .ed-dialogo .sub2{margin-bottom:10px}
+  .erro-dlg{color:#ff8a87;font-size:13.5px;margin-bottom:10px}
+  .barra-grupo{margin-top:-30px;margin-bottom:24px}
+  .painel-lista{margin-bottom:50px}
+  @media (max-width:1100px){.cards-6{grid-template-columns:repeat(3,1fr)}}
   @media (max-width:760px){.cards{grid-template-columns:repeat(2,1fr)}.topo h1{font-size:21px}}
 </style>
 </head>
@@ -500,71 +600,260 @@ $token = (string) $_SESSION['token'];
     <div class="aviso">Lista salva: <?= (int) $salvo ?> pessoas no grupo.</div>
   <?php endif; ?>
 
-  <div class="cards">
+  <div class="cards cards-6">
     <div class="kpi"><div class="n"><?= count($grupo) ?></div><div class="l">pessoas no grupo</div></div>
+    <div class="kpi"><div class="n"><?= $gEnviados ?></div><div class="l">receberam a mensagem</div></div>
+    <div class="kpi"><div class="n"><?= $gAcessaram ?></div><div class="l">abriram a página</div></div>
     <div class="kpi"><div class="n verde"><?= $gVai ?></div><div class="l">confirmaram que vão</div></div>
     <div class="kpi"><div class="n verm"><?= $gNao ?></div><div class="l">avisaram que não vão</div></div>
     <div class="kpi"><div class="n amar"><?= count($faltam) ?></div><div class="l">faltam responder</div></div>
   </div>
 
-  <?php if ($grupo === []): ?>
-    <div class="tabela-box"><div class="vazio">A lista do grupo está vazia. Cole os números no campo lá embaixo.</div></div>
-  <?php else: ?>
-  <div class="barra-grupo">
-    <h2>Quem falta responder <small><?= count($faltam) ?> de <?= count($grupo) ?></small></h2>
-    <div class="acoes">
-      <button class="bt" id="copiar" type="button">Copiar números</button>
-      <a class="bt pri" href="?csv=faltam">Baixar planilha para disparo</a>
+  <details class="painel-msg" <?= is_file(NMC_MENSAGEM) ? '' : 'open' ?>>
+    <summary>Mensagem para enviar</summary>
+    <p>Escreva a mensagem que vai para cada pessoa. <code>{link}</code> vira o link pessoal da página de confirmação (é ele que mostra aqui quem abriu). <code>{nome}</code> vira o nome como está na lista.</p>
+    <textarea id="msg-modelo" rows="6"><?= e($mensagem) ?></textarea>
+    <button class="bt pri" id="msg-salvar" type="button">Salvar mensagem</button>
+  </details>
+
+  <div class="filtros">
+    <input type="search" id="g-busca" placeholder="Buscar por nome ou telefone" aria-label="Buscar no grupo">
+    <div class="abas" role="group" aria-label="Filtrar o grupo">
+      <?php
+        $contaEtapa = array_count_values(array_column($gente, 'etapa'));
+        $filtrosG = [
+            'faltam'       => ['Faltam responder', count($faltam)],
+            'falta_enviar' => ['Falta enviar', $contaEtapa['falta_enviar'] ?? 0],
+            'enviado'      => ['Enviado, não abriu', $contaEtapa['enviado'] ?? 0],
+            'acessou'      => ['Abriu, não respondeu', $contaEtapa['acessou'] ?? 0],
+            'vai'          => ['Vão', $gVai],
+            'nao'          => ['Não vão', $gNao],
+            'todos'        => ['Todos', count($gente)],
+        ];
+      ?>
+      <?php foreach ($filtrosG as $k => [$rot, $n]): ?>
+        <button class="aba" data-g="<?= $k ?>" aria-pressed="<?= $k === 'faltam' ? 'true' : 'false' ?>"><?= e($rot) ?> (<?= $n ?>)</button>
+      <?php endforeach; ?>
     </div>
   </div>
   <?php if ($foraDoGrupo > 0): ?>
     <p class="nota-grupo"><?= $foraDoGrupo ?> confirmação(ões) veio de número que não está na lista do grupo. Veja na aba Confirmações ("fora do grupo").</p>
   <?php endif; ?>
+
   <div class="tabela-box">
-    <?php if ($faltam === []): ?>
-      <div class="vazio">Todo mundo do grupo já respondeu. 🎉</div>
-    <?php else: ?>
     <div class="rolagem">
-      <table class="estreita">
-        <thead><tr><th>Nome no grupo</th><th>Telefone</th><th>Cobrar</th></tr></thead>
+      <table class="estreita" id="g-tabela">
+        <thead><tr><th>Nome no grupo</th><th>Telefone</th><th>Situação</th><th></th></tr></thead>
         <tbody>
-        <?php foreach ($faltam as $f): ?>
-          <tr>
-            <td class="nome"><?= $f['nome'] !== '' ? e($f['nome']) : '<span class="sub2">sem nome</span>' ?></td>
-            <td><?= $f['fone'] !== '' ? e($f['fone']) : '<span class="tag alerta">sem número: conferir no grupo</span>' ?></td>
-            <td>
-              <?php if ($f['wa'] !== ''): ?>
-                <a class="ck" target="_blank" rel="noopener"
-                   href="https://wa.me/<?= e($f['wa']) ?>?text=<?= rawurlencode($msgCobranca . $linkConfirmar . '?whatsapp=' . rawurlencode($f['fone'])) ?>">Mandar mensagem</a>
+        <?php foreach ($gente as $p): ?>
+          <tr data-etapa="<?= e($p['etapa']) ?>" data-linha="<?= (int) $p['linha'] ?>"
+              data-antes="<?= e(trim($p['nome'] . ' | ' . $p['fone'])) ?>"
+              data-nome="<?= e($p['nome']) ?>" data-fone="<?= e($p['fone']) ?>"
+              data-chave="<?= e($p['chave']) ?>" data-wa="<?= e($p['wa']) ?>" data-link="<?= e($p['link']) ?>"
+              data-busca="<?= e(strtolower($p['nome'] . ' ' . preg_replace('/\D/', '', $p['fone']))) ?>">
+            <td class="nome"><span class="v-nome"><?= $p['nome'] !== '' ? e($p['nome']) : '<span class="sub2">sem nome</span>' ?></span></td>
+            <td><span class="v-fone"><?= $p['fone'] !== '' ? e($p['fone']) : '<span class="tag alerta">sem número</span>' ?></span></td>
+            <td class="situacao">
+              <?php
+                echo match ($p['etapa']) {
+                    'vai'          => '<span class="tag sim">✓ Vai</span>',
+                    'nao'          => '<span class="tag nao">✕ Não vai</span>',
+                    'acessou'      => '<span class="tag azul">Abriu a página</span>',
+                    'enviado'      => '<span class="tag cinza">Mensagem enviada</span>',
+                    'sem_numero'   => '<span class="sub2">complete o telefone</span>',
+                    default        => '<span class="sub2">falta enviar</span>',
+                };
+              ?>
+              <div class="sub2 passos">
+                <?= $p['enviado'] !== '' ? 'enviada ' . e($p['enviado']) : '' ?>
+                <?= $p['acessou'] !== '' ? ($p['enviado'] !== '' ? ' · ' : '') . 'abriu ' . e($p['acessou']) : '' ?>
+              </div>
+            </td>
+            <td class="acoes-linha">
+              <?php if ($p['wa'] !== '' && !in_array($p['etapa'], ['vai', 'nao'], true)): ?>
+                <button class="ck g-enviar" type="button"><?= $p['enviado'] !== '' ? 'Enviar de novo' : 'Enviar' ?></button>
               <?php endif; ?>
+              <button class="lapis g-editar" type="button" title="Editar nome e telefone" aria-label="Editar nome e telefone">✎</button>
             </td>
           </tr>
         <?php endforeach; ?>
         </tbody>
       </table>
+      <div class="vazio" id="g-nada" hidden>Ninguém nesta situação.</div>
     </div>
-    <?php endif; ?>
   </div>
-  <?php endif; ?>
 
-  <form method="post" class="painel-lista">
-    <h2>Lista do grupo</h2>
-    <p>Uma pessoa por linha, no formato <code>nome | telefone</code>. Pode colar só o telefone. Número repetido conta uma vez. Número de fora do Brasil começa com + e o código do país.</p>
-    <textarea name="grupo" rows="14" spellcheck="false"><?= e(is_file(NMC_GRUPO) ? (string) file_get_contents(NMC_GRUPO) : '') ?></textarea>
-    <input type="hidden" name="acao" value="salvar_grupo">
-    <input type="hidden" name="token" value="<?= e($token) ?>">
-    <button class="bt pri" type="submit">Salvar lista</button>
-  </form>
+  <div class="barra-grupo">
+    <button class="bt" id="g-adicionar" type="button">+ Adicionar pessoa</button>
+    <div class="acoes">
+      <button class="bt" id="copiar" type="button">Copiar números de quem falta</button>
+      <a class="bt" href="?csv=faltam">Baixar planilha de quem falta</a>
+    </div>
+  </div>
+
+  <details class="painel-lista">
+    <summary>Colar a lista inteira de uma vez</summary>
+    <form method="post">
+      <p>Uma pessoa por linha, no formato <code>nome | telefone</code>. Pode colar só o telefone. Número repetido conta uma vez. Número de fora do Brasil começa com + e o código do país.</p>
+      <textarea name="grupo" rows="14" spellcheck="false"><?= e(is_file(NMC_GRUPO) ? (string) file_get_contents(NMC_GRUPO) : '') ?></textarea>
+      <input type="hidden" name="acao" value="salvar_grupo">
+      <input type="hidden" name="token" value="<?= e($token) ?>">
+      <button class="bt pri" type="submit">Salvar lista</button>
+    </form>
+  </details>
+
+  <dialog id="g-dlg-enviar" class="ed-dialogo largo">
+    <h3>Enviar para <span id="g-env-nome"></span></h3>
+    <p class="sub2" id="g-env-fone"></p>
+    <label class="rot-dlg" for="g-env-texto">Mensagem que vai ser enviada (pode ajustar só para esta pessoa)</label>
+    <textarea id="g-env-texto" rows="8"></textarea>
+    <p class="sub2">Vai abrir o WhatsApp Web com a mensagem pronta; lá é só apertar enviar. Aqui fica marcado como enviado.</p>
+    <div class="acoes"><button class="bt" type="button" data-fechar>Cancelar</button><button class="bt pri" type="button" id="g-env-vai">Enviar pelo WhatsApp Web</button></div>
+  </dialog>
+
+  <dialog id="g-dlg-editar" class="ed-dialogo">
+    <h3 id="g-ed-titulo">Editar pessoa</h3>
+    <label class="rot-dlg" for="g-ed-nome">Nome</label>
+    <input id="g-ed-nome" type="text" maxlength="120">
+    <label class="rot-dlg" for="g-ed-fone">Telefone</label>
+    <input id="g-ed-fone" type="tel" maxlength="30" placeholder="+55 62 99999-0000">
+    <p class="erro-dlg" id="g-ed-erro" hidden></p>
+    <div class="acoes">
+      <button class="bt perigo" type="button" id="g-ed-remover">Tirar do grupo</button>
+      <span style="flex:1"></span>
+      <button class="bt" type="button" data-fechar>Cancelar</button>
+      <button class="bt pri" type="button" id="g-ed-salvar">Salvar</button>
+    </div>
+  </dialog>
 
   <script>
   (function () {
-    var bt = document.getElementById('copiar');
-    if (!bt) return;
-    var numeros = <?= json_encode(array_values(array_filter(array_column($faltam, 'wa')))) ?>;
-    bt.addEventListener('click', function () {
-      navigator.clipboard.writeText(numeros.join('\n')).then(function () {
-        bt.textContent = '✓ ' + numeros.length + ' números copiados';
-        setTimeout(function () { bt.textContent = 'Copiar números'; }, 2500);
+    var TOKEN = <?= json_encode($token) ?>;
+    var faltamNumeros = <?= json_encode(array_values(array_filter(array_column($faltam, 'wa')))) ?>;
+    var tabela = document.getElementById('g-tabela');
+    var filtro = 'faltam';
+    var busca = document.getElementById('g-busca');
+
+    function post(dados) {
+      var f = new FormData();
+      f.append('token', TOKEN);
+      Object.keys(dados).forEach(function (k) { f.append(k, dados[k]); });
+      return fetch(location.pathname, { method: 'POST', body: f, credentials: 'same-origin' }).then(function (r) { return r.json(); });
+    }
+
+    // ── filtro e busca ──
+    function aplicar() {
+      var t = busca.value.trim().toLowerCase();
+      if (/^[\d()\s+\-]+$/.test(t)) t = t.replace(/\D/g, '');
+      var vis = 0;
+      tabela.querySelectorAll('tbody tr').forEach(function (tr) {
+        var e = tr.dataset.etapa;
+        var ok = filtro === 'todos' ? true
+          : filtro === 'faltam' ? (e !== 'vai' && e !== 'nao')
+          : e === filtro;
+        if (ok && t) ok = tr.dataset.busca.indexOf(t) !== -1;
+        tr.hidden = !ok;
+        if (ok) vis++;
+      });
+      document.getElementById('g-nada').hidden = vis > 0;
+    }
+    busca.addEventListener('input', aplicar);
+    document.querySelectorAll('[data-g]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        document.querySelectorAll('[data-g]').forEach(function (x) { x.setAttribute('aria-pressed', 'false'); });
+        b.setAttribute('aria-pressed', 'true');
+        filtro = b.dataset.g;
+        aplicar();
+      });
+    });
+    aplicar();
+
+    document.querySelectorAll('dialog [data-fechar]').forEach(function (b) {
+      b.addEventListener('click', function () { b.closest('dialog').close(); });
+    });
+
+    // ── mensagem-modelo ──
+    var modelo = document.getElementById('msg-modelo');
+    document.getElementById('msg-salvar').addEventListener('click', function () {
+      var bt = this; bt.disabled = true;
+      post({ acao: 'salvar_mensagem', mensagem: modelo.value }).then(function (j) {
+        bt.disabled = false;
+        bt.textContent = j.ok ? '✓ Mensagem salva' : 'Falhou, tente de novo';
+        setTimeout(function () { bt.textContent = 'Salvar mensagem'; }, 2200);
+      });
+    });
+
+    // ── enviar ──
+    var dlgEnv = document.getElementById('g-dlg-enviar');
+    var trEnv = null;
+    function montar(tr) {
+      return modelo.value.replace(/\{link\}/g, tr.dataset.link).replace(/\{nome\}/g, tr.dataset.nome || '').trim();
+    }
+    tabela.addEventListener('click', function (e) {
+      var bt = e.target.closest('.g-enviar');
+      if (bt) {
+        trEnv = bt.closest('tr');
+        document.getElementById('g-env-nome').textContent = trEnv.dataset.nome || trEnv.dataset.fone;
+        document.getElementById('g-env-fone').textContent = trEnv.dataset.fone;
+        document.getElementById('g-env-texto').value = montar(trEnv);
+        dlgEnv.showModal();
+        return;
+      }
+      var ed = e.target.closest('.g-editar');
+      if (ed) abrirEdicao(ed.closest('tr'));
+    });
+    document.getElementById('g-env-vai').addEventListener('click', function () {
+      var texto = document.getElementById('g-env-texto').value;
+      // Mesma aba do WhatsApp Web para todos os envios, em vez de abrir uma nova a cada pessoa.
+      window.open('https://web.whatsapp.com/send?phone=' + trEnv.dataset.wa + '&text=' + encodeURIComponent(texto), 'whatsapp-web');
+      var tr = trEnv;
+      dlgEnv.close();
+      post({ acao: 'marcar_enviado', chave: tr.dataset.chave }).then(function (j) {
+        if (!j.ok) return;
+        if (tr.dataset.etapa === 'falta_enviar') {
+          tr.dataset.etapa = 'enviado';
+          tr.querySelector('.situacao').firstElementChild.outerHTML = '<span class="tag cinza">Mensagem enviada</span>';
+        }
+        var passos = tr.querySelector('.passos');
+        passos.textContent = 'enviada ' + j.em + (passos.textContent.indexOf('abriu') !== -1 ? ' · ' + passos.textContent.split('· ').pop() : '');
+        tr.querySelector('.g-enviar').textContent = 'Enviar de novo';
+        tr.classList.add('acabou-de-enviar');
+      });
+    });
+
+    // ── editar, adicionar, remover ──
+    var dlgEd = document.getElementById('g-dlg-editar');
+    var trEd = null;
+    var erroEd = document.getElementById('g-ed-erro');
+    function abrirEdicao(tr) {
+      trEd = tr;
+      document.getElementById('g-ed-titulo').textContent = tr ? 'Editar pessoa' : 'Adicionar pessoa';
+      document.getElementById('g-ed-nome').value = tr ? tr.dataset.nome : '';
+      document.getElementById('g-ed-fone').value = tr ? tr.dataset.fone : '';
+      document.getElementById('g-ed-remover').hidden = !tr;
+      erroEd.hidden = true;
+      dlgEd.showModal();
+    }
+    document.getElementById('g-adicionar').addEventListener('click', function () { abrirEdicao(null); });
+    function gravar(acao) {
+      var dados = { acao: acao, nome: document.getElementById('g-ed-nome').value, fone: document.getElementById('g-ed-fone').value };
+      if (trEd) { dados.linha = trEd.dataset.linha; dados.antes = trEd.dataset.antes; }
+      post(dados).then(function (j) {
+        if (!j.ok) { erroEd.textContent = j.erro || 'Não consegui salvar.'; erroEd.hidden = false; return; }
+        location.reload();
+      });
+    }
+    document.getElementById('g-ed-salvar').addEventListener('click', function () { gravar(trEd ? 'editar_pessoa' : 'adicionar_pessoa'); });
+    document.getElementById('g-ed-remover').addEventListener('click', function () {
+      if (confirm('Tirar ' + (trEd.dataset.nome || trEd.dataset.fone) + ' da lista do grupo?')) gravar('remover_pessoa');
+    });
+
+    // ── copiar números ──
+    var bc = document.getElementById('copiar');
+    bc.addEventListener('click', function () {
+      navigator.clipboard.writeText(faltamNumeros.join('\n')).then(function () {
+        bc.textContent = '✓ ' + faltamNumeros.length + ' números copiados';
+        setTimeout(function () { bc.textContent = 'Copiar números de quem falta'; }, 2500);
       });
     });
   })();

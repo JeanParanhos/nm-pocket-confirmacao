@@ -78,11 +78,72 @@ function nmc_ler_grupo(): array
     return nmc_parse_grupo((string) file_get_contents(NMC_GRUPO));
 }
 
+/** Envios pelo painel (chave => data), acessos à página pelo link pessoal e a mensagem-modelo. */
+const NMC_ENVIOS   = NMC_DIR . '/envios.json';
+const NMC_ACESSOS  = NMC_DIR . '/acessos.json';
+const NMC_MENSAGEM = NMC_DIR . '/mensagem.txt';
+const NMC_SEGREDO  = NMC_DIR . '/segredo.txt';
+
+const NMC_MSG_PADRAO = "Oi! Aqui é da equipe do Uelicon. Sábado é a Imersão Novos Milionários Pocket e as cadeiras estão contadas.\n\n"
+    . "Confirma pra gente se você vai? Leva 10 segundos:\n{link}";
+
+function nmc_mensagem(): string
+{
+    $m = is_file(NMC_MENSAGEM) ? trim((string) file_get_contents(NMC_MENSAGEM)) : '';
+    return $m !== '' ? $m : NMC_MSG_PADRAO;
+}
+
+/**
+ * Código do link pessoal (?c=...). É derivado do telefone com um segredo do servidor:
+ * não dá para adivinhar o código de outra pessoa nem tirar o telefone dele.
+ */
+function nmc_codigo(string $chave): string
+{
+    if (!is_file(NMC_SEGREDO)) {
+        @file_put_contents(NMC_SEGREDO, bin2hex(random_bytes(16)), LOCK_EX);
+    }
+    return substr(hash_hmac('sha256', $chave, trim((string) @file_get_contents(NMC_SEGREDO))), 0, 10);
+}
+
+/** Pessoa do grupo dona de um código, ou null. */
+function nmc_grupo_por_codigo(string $codigo): ?array
+{
+    if (!preg_match('/^[a-f0-9]{10}$/', $codigo)) {
+        return null;
+    }
+    foreach (nmc_ler_grupo() as $g) {
+        if ($g['chave'] !== '' && hash_equals(nmc_codigo($g['chave']), $codigo)) {
+            return $g;
+        }
+    }
+    return null;
+}
+
+/**
+ * Telefone para mostrar no formulário. O WhatsApp esconde o 9 do celular brasileiro
+ * ("62 9912-5180"): celular com 8 dígitos começando em 6–9 ganha o 9 de volta.
+ */
+function nmc_fone_formulario(string $fone): string
+{
+    $s = trim($fone);
+    $d = preg_replace('/\D/', '', $s);
+    if (str_starts_with($s, '+') && !str_starts_with($d, '55')) {
+        return $s;
+    }
+    if (strlen($d) >= 12 && str_starts_with($d, '55')) {
+        $d = substr($d, 2);
+    }
+    if (strlen($d) === 10 && strpbrk($d[2], '6789') !== false) {
+        $d = substr($d, 0, 2) . '9' . substr($d, 2);
+    }
+    return $d;
+}
+
 function nmc_parse_grupo(string $texto): array
 {
     $itens = [];
     $vistos = [];
-    foreach (preg_split('/\R/', $texto) as $linha) {
+    foreach (preg_split('/\R/', $texto) as $i => $linha) {
         $linha = trim($linha);
         if ($linha === '') {
             continue;
@@ -102,7 +163,7 @@ function nmc_parse_grupo(string $texto): array
             }
             $vistos[$chave] = true;
         }
-        $itens[] = ['nome' => nmc_corta($nome, 120), 'fone' => nmc_corta($fone, 30), 'chave' => $chave];
+        $itens[] = ['nome' => nmc_corta($nome, 120), 'fone' => nmc_corta($fone, 30), 'chave' => $chave, 'linha' => $i];
     }
     return $itens;
 }
