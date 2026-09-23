@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Confirme sua presença — Imersão Novos Milionários Pocket</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800;900&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --bg: #060d1a; --card: #0d1830; --card2: #111e38; --accent: #00d4ff;
+      --green: #25d366; --red: #ef5350; --text: #fff; --muted: #8fa4bb;
+      --border: rgba(255,255,255,0.08); --radius: 14px;
+    }
+    html, body { overflow-x: hidden; }
+    body {
+      background: var(--bg); color: var(--text);
+      font-family: 'Inter', system-ui, sans-serif; line-height: 1.6;
+      -webkit-font-smoothing: antialiased; min-height: 100vh;
+      background-image: radial-gradient(ellipse 70% 40% at 50% 0%, rgba(0,212,255,0.10), transparent 70%);
+    }
+    .wrap { max-width: 560px; margin: 0 auto; padding: 0 20px 64px; }
+    header { padding: 28px 0 8px; display: flex; justify-content: center; }
+    header img { height: 110px; width: auto; }
+
+    .selo {
+      display: inline-block; font-family: 'Montserrat', sans-serif; font-size: 12px; font-weight: 800;
+      letter-spacing: 1.4px; text-transform: uppercase; color: var(--accent);
+      background: rgba(0,212,255,0.10); border: 1px solid rgba(0,212,255,0.3);
+      padding: 6px 14px; border-radius: 100px; margin-bottom: 16px;
+    }
+    .topo { text-align: center; margin: 12px 0 28px; }
+    h1 {
+      font-family: 'Montserrat', sans-serif; font-weight: 900;
+      font-size: clamp(26px, 6vw, 34px); line-height: 1.18; letter-spacing: -0.3px; margin-bottom: 12px;
+    }
+    .topo p { color: var(--muted); font-size: 15.5px; }
+
+    .evento {
+      background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 6px 22px; margin-bottom: 24px;
+    }
+    .evento .linha { display: flex; gap: 14px; padding: 14px 0; align-items: flex-start; }
+    .evento .linha + .linha { border-top: 1px solid var(--border); }
+    .evento .ic { flex: 0 0 22px; font-size: 18px; line-height: 1.4; }
+    .evento .rot { font-size: 11.5px; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase; color: var(--muted); }
+    .evento .val { font-size: 15px; font-weight: 600; }
+    .evento a { color: var(--accent); font-size: 13.5px; font-weight: 600; text-decoration: none; }
+    .evento a:hover { text-decoration: underline; }
+
+    form, .fim {
+      background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 26px 22px;
+    }
+    .campo { margin-bottom: 18px; }
+    label.rot, .grupo-rot { display: block; font-size: 14px; font-weight: 600; margin-bottom: 7px; }
+    .opc { color: var(--muted); font-weight: 400; font-size: 12.5px; }
+    input[type=text], input[type=tel], input[type=email] {
+      width: 100%; background: var(--bg); border: 1px solid rgba(255,255,255,0.16); border-radius: 10px;
+      padding: 14px 15px; color: var(--text); font-family: 'Inter', sans-serif; font-size: 16px; outline: none;
+      transition: border-color .15s;
+    }
+    input:focus { border-color: var(--accent); }
+    .campo.erro input { border-color: var(--red); }
+    .msg-erro { display: none; color: #ff8a87; font-size: 13px; margin-top: 6px; }
+    .campo.erro .msg-erro { display: block; }
+
+    .opcoes { display: grid; gap: 10px; }
+    .opcoes label {
+      display: flex; gap: 12px; align-items: center; cursor: pointer;
+      background: var(--bg); border: 1px solid rgba(255,255,255,0.16); border-radius: 10px;
+      padding: 14px 15px; font-size: 15px; font-weight: 500; transition: border-color .15s, background .15s;
+    }
+    .opcoes input { accent-color: var(--accent); width: 18px; height: 18px; }
+    .opcoes label:has(input:checked) { border-color: var(--accent); background: rgba(0,212,255,0.07); }
+    .opcoes label:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+    .hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+
+    .btn {
+      display: block; width: 100%; border: none; cursor: pointer; margin-top: 8px;
+      background: var(--accent); color: #040d18; border-radius: 100px; padding: 17px 20px;
+      font-family: 'Montserrat', sans-serif; font-size: 15px; font-weight: 800; letter-spacing: 0.6px;
+      text-transform: uppercase; transition: filter .15s, transform .15s;
+    }
+    .btn:hover { filter: brightness(1.08); }
+    .btn:active { transform: scale(0.99); }
+    .btn[disabled] { opacity: .6; cursor: wait; }
+    .falha { display: none; margin-top: 14px; color: #ff8a87; font-size: 14px; text-align: center; }
+
+    .fim { display: none; text-align: center; padding: 34px 22px; }
+    .fim .grande { font-size: 44px; line-height: 1; margin-bottom: 14px; }
+    .fim h2 { font-family: 'Montserrat', sans-serif; font-size: 23px; font-weight: 900; line-height: 1.25; margin-bottom: 10px; }
+    .fim p { color: var(--muted); font-size: 15px; margin-bottom: 22px; }
+    .fim .botoes { display: grid; gap: 10px; }
+    .btn-sec {
+      display: block; text-decoration: none; text-align: center; border-radius: 100px; padding: 14px 18px;
+      font-family: 'Montserrat', sans-serif; font-size: 13.5px; font-weight: 700; letter-spacing: .4px;
+      background: var(--card2); color: var(--text); border: 1px solid var(--border);
+    }
+    .btn-sec:hover { border-color: rgba(0,212,255,.45); }
+    .btn-sec.pri { background: var(--accent); color: #040d18; border-color: transparent; }
+
+    footer { text-align: center; color: var(--muted); font-size: 12.5px; margin-top: 30px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header><img src="/nm-pocket/logo.png" alt="Novos Milionários Pocket" width="220" height="110"></header>
+
+    <div class="topo">
+      <span class="selo">Você foi aprovado</span>
+      <h1>Confirme sua presença na Imersão</h1>
+      <p>Sua vaga está separada. Confirme abaixo para a gente garantir seu lugar no dia.</p>
+    </div>
+
+    <div class="evento">
+      <div class="linha">
+        <span class="ic" aria-hidden="true">📅</span>
+        <div><div class="rot">Data</div><div class="val">Sábado, 26 de setembro</div></div>
+      </div>
+      <div class="linha">
+        <span class="ic" aria-hidden="true">🕘</span>
+        <div><div class="rot">Horário</div><div class="val">Das 9h às 18h</div></div>
+      </div>
+      <div class="linha">
+        <span class="ic" aria-hidden="true">📍</span>
+        <div>
+          <div class="rot">Local</div>
+          <div class="val">AlphaPark Hotel — Av. Alphaville Flamboyant, 3609, Goiânia/GO</div>
+          <a href="https://www.google.com/maps/search/?api=1&query=AlphaPark+Hotel+Av.+Alphaville+Flamboyant+3609+Goi%C3%A2nia" target="_blank" rel="noopener">Abrir no mapa →</a>
+        </div>
+      </div>
+    </div>
+
+    <form id="form" novalidate>
+      <div class="campo" data-campo="nome">
+        <label class="rot" for="nome">Seu nome</label>
+        <input type="text" id="nome" name="nome" autocomplete="name" required>
+        <div class="msg-erro"></div>
+      </div>
+      <div class="campo" data-campo="whatsapp">
+        <label class="rot" for="whatsapp">WhatsApp</label>
+        <input type="tel" id="whatsapp" name="whatsapp" autocomplete="tel-national" inputmode="numeric" placeholder="(00) 00000-0000" required>
+        <div class="msg-erro"></div>
+      </div>
+      <div class="campo" data-campo="email">
+        <label class="rot" for="email">E-mail <span class="opc">(opcional)</span></label>
+        <input type="email" id="email" name="email" autocomplete="email">
+        <div class="msg-erro"></div>
+      </div>
+      <div class="campo" data-campo="presenca">
+        <div class="grupo-rot" id="rot-presenca">Você vai participar?</div>
+        <div class="opcoes" role="radiogroup" aria-labelledby="rot-presenca">
+          <label><input type="radio" name="presenca" value="Sim, vou estar lá"> Sim, vou estar lá</label>
+          <label><input type="radio" name="presenca" value="Não vou conseguir ir"> Não vou conseguir ir</label>
+        </div>
+        <div class="msg-erro"></div>
+      </div>
+
+      <div class="hp" aria-hidden="true">
+        <label>Site <input type="text" name="website" tabindex="-1" autocomplete="off"></label>
+      </div>
+
+      <button type="submit" class="btn" id="enviar">Confirmar</button>
+      <div class="falha" id="falha">Não conseguimos registrar agora. Tente de novo em instantes.</div>
+    </form>
+
+    <div class="fim" id="fim-sim">
+      <div class="grande" aria-hidden="true">✅</div>
+      <h2>Presença confirmada!</h2>
+      <p>Te esperamos no sábado, 26 de setembro, às 9h, no AlphaPark Hotel. Chegue com uns minutos de antecedência para o credenciamento.</p>
+      <div class="botoes">
+        <a class="btn-sec pri" target="_blank" rel="noopener"
+           href="https://calendar.google.com/calendar/render?action=TEMPLATE&text=Imers%C3%A3o+Novos+Milion%C3%A1rios+Pocket&dates=20260926T090000/20260926T180000&ctz=America/Sao_Paulo&location=AlphaPark+Hotel+-+Av.+Alphaville+Flamboyant%2C+3609+-+Goi%C3%A2nia%2FGO&details=Imers%C3%A3o+presencial+com+Uelicon+Ven%C3%A2ncio">Salvar na minha agenda</a>
+        <a class="btn-sec" target="_blank" rel="noopener"
+           href="https://www.google.com/maps/search/?api=1&query=AlphaPark+Hotel+Av.+Alphaville+Flamboyant+3609+Goi%C3%A2nia">Ver como chegar</a>
+      </div>
+    </div>
+
+    <div class="fim" id="fim-nao">
+      <div class="grande" aria-hidden="true">🙏</div>
+      <h2>Obrigado por avisar</h2>
+      <p>Vamos liberar sua vaga para quem está na lista de espera. Se mudar de ideia, é só voltar a esta página e confirmar de novo.</p>
+    </div>
+
+    <footer>Imersão Novos Milionários Pocket · Uelicon Venâncio</footer>
+  </div>
+
+<script>
+(function () {
+  var form = document.getElementById('form');
+  var tel = form.whatsapp;
+
+  function mascara(v) {
+    var d = v.replace(/\D/g, '');
+    if (d.length > 11 && d.indexOf('55') === 0) d = d.slice(2);
+    d = d.slice(0, 11);
+    if (d.length <= 2) return d.length ? '(' + d : '';
+    if (d.length <= 6) return '(' + d.slice(0, 2) + ') ' + d.slice(2);
+    if (d.length <= 10) return '(' + d.slice(0, 2) + ') ' + d.slice(2, 6) + '-' + d.slice(6);
+    return '(' + d.slice(0, 2) + ') ' + d.slice(2, 7) + '-' + d.slice(7);
+  }
+  tel.addEventListener('input', function () { tel.value = mascara(tel.value); });
+
+  // Link do WhatsApp pode vir com ?nome=...&whatsapp=... para a pessoa só clicar.
+  var q = new URLSearchParams(location.search);
+  if (q.get('nome')) form.nome.value = q.get('nome');
+  if (q.get('whatsapp')) tel.value = mascara(q.get('whatsapp'));
+  if (q.get('email')) form.email.value = q.get('email');
+
+  function erro(campo, msg) {
+    var el = form.querySelector('[data-campo="' + campo + '"]');
+    if (!el) return;
+    el.classList.toggle('erro', !!msg);
+    el.querySelector('.msg-erro').textContent = msg || '';
+  }
+
+  form.addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    ['nome', 'whatsapp', 'email', 'presenca'].forEach(function (c) { erro(c, ''); });
+    document.getElementById('falha').style.display = 'none';
+
+    var ok = true;
+    if (!form.nome.value.trim()) { erro('nome', 'Digite seu nome.'); ok = false; }
+    var d = tel.value.replace(/\D/g, '');
+    if (d.length < 10) { erro('whatsapp', 'Digite o WhatsApp com DDD.'); ok = false; }
+    var em = form.email.value.trim();
+    if (em && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) { erro('email', 'E-mail inválido.'); ok = false; }
+    var pres = form.querySelector('[name=presenca]:checked');
+    if (!pres) { erro('presenca', 'Escolha uma opção.'); ok = false; }
+    if (!ok) {
+      var primeiro = form.querySelector('.campo.erro input');
+      if (primeiro) primeiro.focus();
+      return;
+    }
+
+    var bt = document.getElementById('enviar');
+    bt.disabled = true; bt.textContent = 'Enviando…';
+
+    var dados = new FormData(form);
+    dados.append('landing_url', location.href);
+
+    fetch('/nm-pocket-app/confirmar.php', { method: 'POST', body: dados })
+      .then(function (r) { return r.json().then(function (j) { return { status: r.status, j: j }; }); })
+      .then(function (res) {
+        if (res.j && res.j.ok) {
+          form.style.display = 'none';
+          var fim = document.getElementById(res.j.vai === false ? 'fim-nao' : 'fim-sim');
+          fim.style.display = 'block';
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+          return;
+        }
+        if (res.j && res.j.erros) {
+          Object.keys(res.j.erros).forEach(function (c) { erro(c, res.j.erros[c]); });
+        } else {
+          document.getElementById('falha').style.display = 'block';
+        }
+        bt.disabled = false; bt.textContent = 'Confirmar';
+      })
+      .catch(function () {
+        document.getElementById('falha').style.display = 'block';
+        bt.disabled = false; bt.textContent = 'Confirmar';
+      });
+  });
+})();
+</script>
+</body>
+</html>
