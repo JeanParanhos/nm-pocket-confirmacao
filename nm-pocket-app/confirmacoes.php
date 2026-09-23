@@ -646,7 +646,8 @@ $token = (string) $_SESSION['token'];
             'acessou'      => ['Abriu, não respondeu', $contaEtapa['acessou'] ?? 0],
             'vai'          => ['Vão', $gVai],
             'nao'          => ['Não vão', $gNao],
-            'todos'        => ['Todos', count($gente)],
+            'fora'         => ['Fora do grupo', $foraDoGrupo],
+            'todos'        => ['Todos', count($gente) + $foraDoGrupo],
         ];
       ?>
       <?php foreach ($filtrosG as $k => [$rot, $n]): ?>
@@ -655,7 +656,7 @@ $token = (string) $_SESSION['token'];
     </div>
   </div>
   <?php if ($foraDoGrupo > 0): ?>
-    <p class="nota-grupo"><?= $foraDoGrupo ?> confirmação(ões) veio de número que não está na lista do grupo. Veja na aba Confirmações ("fora do grupo").</p>
+    <p class="nota-grupo aviso-fora"><b><?= $foraDoGrupo ?></b> <?= $foraDoGrupo === 1 ? 'pessoa respondeu' : 'pessoas responderam' ?> a página sem estar na lista do grupo. Estão no filtro <b>Fora do grupo</b>, com o botão para colocar no grupo.</p>
   <?php endif; ?>
 
   <div class="tabela-box">
@@ -693,6 +694,19 @@ $token = (string) $_SESSION['token'];
               <?php endif; ?>
               <button class="lapis g-remover" type="button" title="Tirar do grupo" aria-label="Tirar do grupo">🗑</button>
             </td>
+          </tr>
+        <?php endforeach; ?>
+        <?php foreach ($linhas as $l): if ($l['no_grupo']) continue; ?>
+          <tr data-etapa="fora" data-fora="1" data-nome="<?= e($l['nome']) ?>" data-fone="<?= e($l['whatsapp']) ?>"
+              data-busca="<?= e(strtolower($l['nome'] . ' ' . preg_replace('/\D/', '', $l['whatsapp']))) ?>">
+            <td class="nome"><?= e($l['nome']) ?><?php if ($l['email'] !== ''): ?><div class="sub2"><?= e($l['email']) ?></div><?php endif; ?></td>
+            <td><a class="wa" href="https://wa.me/<?= e($l['wa']) ?>" target="_blank" rel="noopener"><?= e($l['whatsapp']) ?></a></td>
+            <td class="situacao">
+              <?= $l['vai'] ? '<span class="tag sim">✓ Vai</span>' : '<span class="tag nao">✕ Não vai</span>' ?>
+              <span class="tag alerta">fora do grupo</span>
+              <div class="sub2 passos">respondeu <?= e($l['data']) ?></div>
+            </td>
+            <td class="acoes-linha"><button class="ck g-por-no-grupo" type="button">Colocar no grupo</button></td>
           </tr>
         <?php endforeach; ?>
         </tbody>
@@ -767,7 +781,7 @@ $token = (string) $_SESSION['token'];
       tabela.querySelectorAll('tbody tr').forEach(function (tr) {
         var e = tr.dataset.etapa;
         var ok = filtro === 'todos' ? true
-          : filtro === 'faltam' ? (e !== 'vai' && e !== 'nao')
+          : filtro === 'faltam' ? (e !== 'vai' && e !== 'nao' && e !== 'fora')
           : e === filtro;
         if (ok && t) ok = tr.dataset.busca.indexOf(t) !== -1;
         tr.hidden = !ok;
@@ -815,6 +829,16 @@ $token = (string) $_SESSION['token'];
         document.getElementById('g-env-fone').textContent = trEnv.dataset.fone;
         document.getElementById('g-env-texto').value = montar(trEnv);
         dlgEnv.showModal();
+        return;
+      }
+      var pg = e.target.closest('.g-por-no-grupo');
+      if (pg) {
+        var trf = pg.closest('tr');
+        pg.disabled = true;
+        post({ acao: 'adicionar_pessoa', nome: trf.dataset.nome, fone: trf.dataset.fone }).then(function (j) {
+          if (!j.ok) { pg.disabled = false; pg.textContent = j.erro || 'Não consegui'; return; }
+          location.reload();
+        });
         return;
       }
       var lap = e.target.closest('.lapis-in');
