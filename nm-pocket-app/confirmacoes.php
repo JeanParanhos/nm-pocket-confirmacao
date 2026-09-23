@@ -293,6 +293,7 @@ foreach (nmc_ler_ndjson(NMC_APLICACOES) as $ap) {
 }
 
 $checkin = nmc_ler_json(NMC_CHECKIN);
+$assentos = nmc_ler_json(NMC_ASSENTOS);
 
 $vao = $naoVao = $chegaram = $semAplicacao = 0;
 $linhas = [];
@@ -321,6 +322,8 @@ foreach ($pessoas as $fone => $p) {
         'aplicou'   => $aplicou,
         'respostas' => (int) $p['respostas'],
         'grupo'     => (string) ($p['grupo_chave'] ?? ''),
+        'cadeira'   => $vai ? (string) ($assentos[$fone]['cadeira'] ?? '') : '',
+        'ticket'    => $vai ? (string) ($assentos[$fone]['ticket'] ?? '') : '',
         'checkin'   => $chegou ? date('d/m H:i', strtotime($checkin[$fone])) : '',
     ];
 }
@@ -472,11 +475,11 @@ if (isset($_GET['csv'])) {
     header('Content-Disposition: attachment; filename="nm-pocket-confirmacoes-' . date('Y-m-d') . '.csv"');
     $saida = fopen('php://output', 'w');
     fwrite($saida, "\xEF\xBB\xBF");
-    fputcsv($saida, ['Respondeu em', 'Nome', 'WhatsApp', 'E-mail', 'Presença', 'Aplicou antes', 'Respostas', 'Check-in'], ';');
+    fputcsv($saida, ['Respondeu em', 'Nome', 'WhatsApp', 'E-mail', 'Presença', 'Cadeira', 'Ticket', 'Aplicou antes', 'Respostas', 'Check-in'], ';');
     foreach ($linhas as $l) {
         fputcsv($saida, [
             $l['data'], $l['nome'], $l['whatsapp'], $l['email'],
-            $l['vai'] ? 'Vai' : 'Não vai', $l['aplicou'] ? 'Sim' : 'Não', $l['respostas'], $l['checkin'],
+            $l['vai'] ? 'Vai' : 'Não vai', $l['cadeira'], $l['ticket'], $l['aplicou'] ? 'Sim' : 'Não', $l['respostas'], $l['checkin'],
         ], ';');
     }
     fclose($saida);
@@ -1194,7 +1197,7 @@ $token = (string) $_SESSION['token'];
   </div>
 
   <div class="filtros">
-    <input type="search" id="busca" placeholder="Buscar por nome, WhatsApp ou e-mail" aria-label="Buscar">
+    <input type="search" id="busca" placeholder="Buscar por nome, WhatsApp, e-mail ou nº do ticket" aria-label="Buscar">
     <div class="abas" role="group" aria-label="Filtrar">
       <button class="aba" data-f="todos" aria-pressed="true">Todos (<?= count($linhas) ?>)</button>
       <button class="aba" data-f="vai" aria-pressed="false">Vão (<?= $vao ?>)</button>
@@ -1209,16 +1212,17 @@ $token = (string) $_SESSION['token'];
     <?php else: ?>
     <div class="rolagem">
       <table>
-        <thead><tr><th>Respondeu</th><th>Nome</th><th>WhatsApp</th><th>Presença</th><th>Aplicou antes?</th><th>Check-in</th></tr></thead>
+        <thead><tr><th>Respondeu</th><th>Nome</th><th>WhatsApp</th><th>Presença</th><th>Cadeira · ticket</th><th>Aplicou antes?</th><th>Check-in</th></tr></thead>
         <tbody id="corpo">
         <?php foreach ($linhas as $l): ?>
           <tr data-vai="<?= $l['vai'] ? '1' : '0' ?>" data-aplicou="<?= $l['aplicou'] ? '1' : '0' ?>"
-              data-busca="<?= e(strtolower($l['nome'] . ' ' . $l['wa'] . ' ' . preg_replace('/\D/', '', $l['whatsapp']) . ' ' . $l['email'])) ?>">
+              data-busca="<?= e(strtolower($l['nome'] . ' ' . $l['wa'] . ' ' . preg_replace('/\D/', '', $l['whatsapp']) . ' ' . $l['email'] . ' ' . $l['ticket'] . ' cadeira' . $l['cadeira'])) ?>">
             <td><?= e($l['data']) ?><?php if ($l['respostas'] > 1): ?><div class="sub2">respondeu <?= $l['respostas'] ?> vezes</div><?php endif; ?></td>
             <td><div class="nome"><?= e($l['nome']) ?></div><?php if ($l['email'] !== ''): ?><div class="sub2"><?= e($l['email']) ?></div><?php endif; ?></td>
             <td><a class="wa" href="https://wa.me/<?= e($l['wa']) ?>" target="_blank" rel="noopener"><?= e($l['whatsapp']) ?></a>
               <?php if ($grupo !== [] && !$l['no_grupo']): ?><div class="sub2">fora do grupo</div><?php endif; ?></td>
             <td><?= $l['vai'] ? '<span class="tag sim">✓ Vai</span>' : '<span class="tag nao">✕ Não vai</span>' ?></td>
+            <td><?php if ($l['vai']): ?><b><?= $l['cadeira'] !== '' ? 'Cadeira ' . e($l['cadeira']) : 'sem cadeira' ?></b><?php if ($l['ticket'] !== ''): ?><div class="sub2">#<?= e($l['ticket']) ?></div><?php endif; ?><?php endif; ?></td>
             <td><?= $l['aplicou'] ? '<span class="tag sim">Sim</span>' : '<span class="tag alerta">⚠ Não achamos</span>' ?></td>
             <td>
               <button class="ck<?= $l['checkin'] !== '' ? ' feito' : '' ?>" data-fone="<?= e($l['fone']) ?>">

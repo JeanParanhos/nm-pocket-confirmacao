@@ -84,4 +84,13 @@ if (!nmc_gravar_linha(NMC_ARQUIVO, $registro)) {
     responder(500, ['ok' => false, 'erro' => 'falha ao salvar']);
 }
 
-responder(200, ['ok' => true, 'vai' => $presenca === NMC_PRESENCA[0]]);
+// Quem vai ganha cadeira e ticket (e mantém os mesmos se confirmar de novo); quem não vai libera.
+$vai = $presenca === NMC_PRESENCA[0];
+$assento = nmc_reservar($chave, $vai);
+
+responder(200, [
+    'ok'      => true,
+    'vai'     => $vai,
+    'cadeira' => $assento['cadeira'] ?? null,
+    'ticket'  => $assento['ticket'] ?? null,
+]);

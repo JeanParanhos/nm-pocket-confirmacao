@@ -121,6 +121,24 @@
     .btn-sec:hover { border-color: rgba(0,212,255,.45); }
     .btn-sec.pri { background: var(--accent); color: #040d18; border-color: transparent; }
 
+    [hidden] { display: none !important; }
+    .ticket {
+      margin: 0 auto 24px; max-width: 360px; text-align: left;
+      background: linear-gradient(160deg, rgba(0,212,255,0.16), rgba(0,212,255,0.05));
+      border: 1px solid rgba(0,212,255,0.45); border-radius: 16px; overflow: hidden;
+    }
+    .ticket-topo {
+      background: var(--accent); color: #040d18; text-align: center; padding: 9px 14px;
+      font-family: 'Montserrat', sans-serif; font-size: 12.5px; font-weight: 800; letter-spacing: 1.2px; text-transform: uppercase;
+    }
+    .ticket-corpo { display: flex; align-items: stretch; }
+    .ticket-campo { flex: 1; padding: 18px 16px; display: flex; flex-direction: column; gap: 4px; align-items: center; text-align: center; }
+    .ticket-corte { width: 0; border-left: 2px dashed rgba(0,212,255,0.45); margin: 12px 0; }
+    .ticket-rot { font-size: 11.5px; font-weight: 700; letter-spacing: .8px; text-transform: uppercase; color: var(--muted); }
+    .ticket-val { font-family: 'Montserrat', sans-serif; font-size: 26px; font-weight: 900; line-height: 1.1; color: #fff; }
+    .ticket-val.pequeno { font-size: 15px; font-weight: 800; }
+    .ticket-nota { border-top: 1px dashed rgba(0,212,255,0.35); padding: 10px 14px; text-align: center; font-size: 12.5px; color: var(--muted); }
+
     footer { text-align: center; color: var(--muted); font-size: 12.5px; margin-top: 30px; }
   </style>
 </head>
@@ -205,8 +223,29 @@
 
     <div class="fim" id="fim-sim">
       <div class="grande" aria-hidden="true">✅</div>
-      <h2 data-ed="sim-titulo">Presença confirmada!</h2>
+      <h2 data-ed="sim-titulo">Sua confirmação foi recebida!</h2>
       <p data-ed="sim-texto">Te esperamos no sábado, 26 de setembro, no AlphaPark Hotel. Chegue até as 8h30 pra gente não se atrasar.</p>
+
+      <div class="ticket" id="ticket">
+        <div class="ticket-topo" data-ed="ticket-rotulo">Anote o seu ticket</div>
+        <div class="ticket-corpo">
+          <div class="ticket-campo">
+            <span class="ticket-rot">Ticket</span>
+            <span class="ticket-val">#<span id="ticket-num">000000</span></span>
+          </div>
+          <div class="ticket-corte" aria-hidden="true"></div>
+          <div class="ticket-campo" id="ticket-cadeira">
+            <span class="ticket-rot" data-ed="ticket-poltrona">Sua poltrona é a</span>
+            <span class="ticket-val">cadeira <span id="ticket-cad">00</span></span>
+          </div>
+          <div class="ticket-campo" id="ticket-sem-cadeira" hidden>
+            <span class="ticket-rot">Poltrona</span>
+            <span class="ticket-val pequeno" data-ed="ticket-sem-cadeira">indicada na entrada</span>
+          </div>
+        </div>
+        <div class="ticket-nota" data-ed="ticket-nota">Tire um print desta tela e apresente na entrada.</div>
+      </div>
+
       <div class="botoes">
         <a class="btn-sec pri" target="_blank" rel="noopener"
            href="https://calendar.google.com/calendar/render?action=TEMPLATE&text=Imers%C3%A3o+Novos+Milion%C3%A1rios+Pocket&dates=20260926T090000/20260926T180000&ctz=America/Sao_Paulo&location=AlphaPark+Hotel+-+Av.+Alphaville+Flamboyant%2C+3609+-+Goi%C3%A2nia%2FGO&details=Imers%C3%A3o+presencial+com+Uelicon+Ven%C3%A2ncio">Salvar na minha agenda</a>
@@ -357,8 +396,19 @@
         if (res.j && res.j.ok) {
           form.style.display = 'none';
           var fim = document.getElementById(res.j.vai === false ? 'fim-nao' : 'fim-sim');
+          if (res.j.vai !== false) {
+            if (res.j.ticket) document.getElementById('ticket-num').textContent = res.j.ticket;
+            else document.getElementById('ticket').hidden = true;
+            if (res.j.cadeira) {
+              document.getElementById('ticket-cad').textContent = res.j.cadeira;
+            } else {
+              document.getElementById('ticket-cadeira').hidden = true;
+              document.getElementById('ticket-sem-cadeira').hidden = false;
+            }
+          }
           fim.style.display = 'block';
-          window.scrollTo({ top: 0, behavior: 'smooth' });
+          // Vai direto para a resposta (e o ticket), que fica abaixo do vídeo e dos dados do evento.
+          fim.scrollIntoView({ behavior: 'smooth', block: 'start' });
           return;
         }
         if (res.j && res.j.erros) {

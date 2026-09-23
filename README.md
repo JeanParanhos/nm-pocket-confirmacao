@@ -86,6 +86,7 @@ Tudo fora do site, em `/home/arlindo/data/nm-pocket/`, junto das aplicações:
 
 - `confirmacoes.ndjson`: uma linha por resposta. Quem responde de novo não é barrado: no painel vale a **última** resposta de cada WhatsApp.
 - `checkin.json`: quem chegou no dia (WhatsApp → hora).
+- `assentos.json`: cadeira (sorteada de 1 a 150, sem repetir) e ticket (6 dígitos, sem repetir) de quem confirmou que vai. Confirmar de novo mantém os dois; responder "não vou" libera a cadeira. Aparece para a pessoa na tela de confirmado e no painel (a busca das Confirmações acha pelo nº do ticket). Para mudar o total de cadeiras: `NMC_CADEIRAS` em `confirmacao-comum.php`.
 - `grupo.txt`: quem está no grupo do WhatsApp, uma pessoa por linha (`nome | telefone`). Editável na aba **Grupo do WhatsApp** do painel, que mostra quantos confirmaram e a lista de quem falta, com botão de mensagem, cópia dos números e planilha para disparo. Não vai para o repositório (são telefones).
 - `confirmacao-config.php`: **hash da senha do painel**. Não vai para o repositório.
 - `mensagem.txt`: a mensagem que o painel manda para o grupo (`{link}` e `{nome}` são trocados por pessoa).

@@ -182,6 +182,55 @@ function nmc_parse_grupo(string $texto): array
     return $itens;
 }
 
+/** Cadeira e ticket de quem confirmou que vai: chave do telefone => {cadeira, ticket, em}. */
+const NMC_ASSENTOS = NMC_DIR . '/assentos.json';
+const NMC_CADEIRAS = 150;
+
+/**
+ * Reserva (ou devolve a que já tinha) uma cadeira sorteada de 1 a NMC_CADEIRAS e um ticket
+ * de 6 dígitos, os dois sem repetir. Quem responde "não vou" libera a cadeira.
+ * Devolve ['cadeira' => int|null, 'ticket' => string] ou null quando não vai.
+ * Cadeira null = as 150 já foram distribuídas.
+ */
+function nmc_reservar(string $chave, bool $vai): ?array
+{
+    $fh = @fopen(NMC_ASSENTOS, 'c+b');
+    if ($fh === false || !flock($fh, LOCK_EX)) {
+        error_log('nm-pocket: não consegui abrir ' . NMC_ASSENTOS);
+        return $vai ? ['cadeira' => null, 'ticket' => ''] : null;
+    }
+    $mapa = json_decode((string) stream_get_contents($fh), true);
+    $mapa = is_array($mapa) ? $mapa : [];
+
+    if (!$vai) {
+        unset($mapa[$chave]);
+        $saida = null;
+    } elseif (isset($mapa[$chave])) {
+        $saida = $mapa[$chave];
+    } else {
+        $ocupadas = array_flip(array_filter(array_column($mapa, 'cadeira')));
+        $livres = array_values(array_filter(range(1, NMC_CADEIRAS), static fn($n) => !isset($ocupadas[$n])));
+        $tickets = array_flip(array_column($mapa, 'ticket'));
+        do {
+            $ticket = (string) random_int(100000, 999999);
+        } while (isset($tickets[$ticket]));
+        $saida = [
+            'cadeira' => $livres ? $livres[random_int(0, count($livres) - 1)] : null,
+            'ticket'  => $ticket,
+            'em'      => (new DateTimeImmutable('now'))->format('c'),
+        ];
+        $mapa[$chave] = $saida;
+    }
+
+    ftruncate($fh, 0);
+    rewind($fh);
+    fwrite($fh, json_encode($mapa, JSON_UNESCAPED_UNICODE | JSON_FORCE_OBJECT));
+    fflush($fh);
+    flock($fh, LOCK_UN);
+    fclose($fh);
+    return $saida;
+}
+
 /** Lê um NDJSON inteiro (linhas inválidas são puladas). */
 function nmc_ler_ndjson(string $arquivo): array
 {
