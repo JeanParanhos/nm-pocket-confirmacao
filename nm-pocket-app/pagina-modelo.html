@@ -129,22 +129,22 @@
     <header><img src="/nm-pocket/logo.png" alt="Novos Milionários Pocket" width="220" height="110"></header>
 
     <div class="topo">
-      <span class="selo">Você foi aprovado</span>
-      <h1>Confirme sua presença na Imersão</h1>
-      <p>Sua vaga está separada. Confirme abaixo para a gente garantir seu lugar no dia.</p>
+      <span class="selo" data-ed="selo">Você foi aprovado</span>
+      <h1 data-ed="titulo">Confirme sua presença na Imersão</h1>
+      <p data-ed="subtitulo">Sua vaga está separada. Confirme abaixo para a gente garantir seu lugar no dia.</p>
     </div>
 
     <div class="video">
-      <video src="uelicon.mp4" poster="uelicon-capa.jpg" controls playsinline preload="metadata" width="480" height="848"></video>
+      <video src="/nm-pocket/confirmar/uelicon.mp4" poster="/nm-pocket/confirmar/uelicon-capa.jpg" controls playsinline preload="metadata" width="480" height="848"></video>
     </div>
 
     <div class="recado">
-      <p>Nesse sábado vamos passar o dia inteiro juntos, com a mão na massa. Vou mostrar pra vocês <strong>todos os funis de vendas que já me fizeram faturar mais de 40 milhões de reais no digital.</strong></p>
-      <p>Chegue até as <strong>8h30</strong> pra gente não se atrasar.</p>
-      <div class="assina">Uelicon Venâncio</div>
+      <p data-ed="recado-1">Nesse sábado vamos passar o dia inteiro juntos, com a mão na massa. Vou mostrar pra vocês <strong>todos os funis de vendas que já me fizeram faturar mais de 40 milhões de reais no digital.</strong></p>
+      <p data-ed="recado-2">Chegue até as <strong>8h30</strong> pra gente não se atrasar.</p>
+      <div class="assina" data-ed="recado-assina">Uelicon Venâncio</div>
     </div>
 
-    <div class="importante">
+    <div class="importante" data-ed="importante">
       <strong>Importante: as cadeiras estão contadas.</strong>
       Se você não for, avise o mais rápido possível: sua vaga vai para outra pessoa que precisa estar lá.
       Quem faltar sem avisar não terá mais o cadastro aceito nos próximos eventos.
@@ -153,17 +153,17 @@
     <div class="evento">
       <div class="linha">
         <span class="ic" aria-hidden="true">📅</span>
-        <div><div class="rot">Data</div><div class="val">Sábado, 26 de setembro</div></div>
+        <div><div class="rot">Data</div><div class="val" data-ed="data">Sábado, 26 de setembro</div></div>
       </div>
       <div class="linha">
         <span class="ic" aria-hidden="true">🕘</span>
-        <div><div class="rot">Horário</div><div class="val">Das 9h às 18h · chegue até as 8h30</div></div>
+        <div><div class="rot">Horário</div><div class="val" data-ed="horario">Das 9h às 18h · chegue até as 8h30</div></div>
       </div>
       <div class="linha">
         <span class="ic" aria-hidden="true">📍</span>
         <div>
           <div class="rot">Local</div>
-          <div class="val">AlphaPark Hotel — Av. Alphaville Flamboyant, 3609, Goiânia/GO</div>
+          <div class="val" data-ed="local">AlphaPark Hotel — Av. Alphaville Flamboyant, 3609, Goiânia/GO</div>
           <a href="https://www.google.com/maps/search/?api=1&query=AlphaPark+Hotel+Av.+Alphaville+Flamboyant+3609+Goi%C3%A2nia" target="_blank" rel="noopener">Abrir no mapa →</a>
         </div>
       </div>
@@ -187,7 +187,7 @@
         <div class="msg-erro"></div>
       </div>
       <div class="campo" data-campo="presenca">
-        <div class="grupo-rot" id="rot-presenca">Você vai participar?</div>
+        <div class="grupo-rot" id="rot-presenca" data-ed="pergunta">Você vai participar?</div>
         <div class="opcoes" role="radiogroup" aria-labelledby="rot-presenca">
           <label><input type="radio" name="presenca" value="Sim, vou estar lá"> Sim, vou estar lá</label>
           <label><input type="radio" name="presenca" value="Não vou conseguir ir"> Não vou conseguir ir</label>
@@ -205,8 +205,8 @@
 
     <div class="fim" id="fim-sim">
       <div class="grande" aria-hidden="true">✅</div>
-      <h2>Presença confirmada!</h2>
-      <p>Te esperamos no sábado, 26 de setembro, no AlphaPark Hotel. Chegue até as 8h30 pra gente não se atrasar.</p>
+      <h2 data-ed="sim-titulo">Presença confirmada!</h2>
+      <p data-ed="sim-texto">Te esperamos no sábado, 26 de setembro, no AlphaPark Hotel. Chegue até as 8h30 pra gente não se atrasar.</p>
       <div class="botoes">
         <a class="btn-sec pri" target="_blank" rel="noopener"
            href="https://calendar.google.com/calendar/render?action=TEMPLATE&text=Imers%C3%A3o+Novos+Milion%C3%A1rios+Pocket&dates=20260926T090000/20260926T180000&ctz=America/Sao_Paulo&location=AlphaPark+Hotel+-+Av.+Alphaville+Flamboyant%2C+3609+-+Goi%C3%A2nia%2FGO&details=Imers%C3%A3o+presencial+com+Uelicon+Ven%C3%A2ncio">Salvar na minha agenda</a>
@@ -217,11 +217,11 @@
 
     <div class="fim" id="fim-nao">
       <div class="grande" aria-hidden="true">🙏</div>
-      <h2>Obrigado por avisar</h2>
-      <p>Vamos liberar sua vaga para quem está na lista de espera. Se mudar de ideia, é só voltar a esta página e confirmar de novo.</p>
+      <h2 data-ed="nao-titulo">Obrigado por avisar</h2>
+      <p data-ed="nao-texto">Vamos liberar sua vaga para quem está na lista de espera. Se mudar de ideia, é só voltar a esta página e confirmar de novo.</p>
     </div>
 
-    <footer>Imersão Novos Milionários Pocket · Uelicon Venâncio</footer>
+    <footer data-ed="rodape">Imersão Novos Milionários Pocket · Uelicon Venâncio</footer>
   </div>
 
 <script>

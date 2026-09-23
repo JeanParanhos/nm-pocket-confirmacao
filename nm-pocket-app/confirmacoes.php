@@ -9,6 +9,7 @@
 declare(strict_types=1);
 
 require __DIR__ . '/confirmacao-comum.php';
+require __DIR__ . '/pagina.php';
 
 header('X-Robots-Tag: noindex, nofollow, noarchive');
 header('Cache-Control: no-store');
@@ -99,6 +100,25 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && isset($_POST['acao'])) {
         exit;
     }
 
+    // Página de confirmação: rascunho, publicar, descartar.
+    if (in_array($_POST['acao'], ['salvar_pagina', 'publicar_pagina', 'descartar_pagina'], true)) {
+        $d = nmp_dados();
+        if ($_POST['acao'] === 'descartar_pagina') {
+            $d['rascunho'] = $d['publicado'];
+            exit(json_encode(['ok' => nmp_salvar_dados($d)]));
+        }
+        $textos = json_decode((string) ($_POST['textos'] ?? ''), true);
+        if (is_array($textos)) {
+            $d['rascunho'] = nmp_diferencas($textos);
+            nmp_salvar_dados($d);
+        }
+        if ($_POST['acao'] === 'salvar_pagina') {
+            exit(json_encode(['ok' => true, 'pendente' => $d['rascunho'] !== $d['publicado']]));
+        }
+        [$ok, $n] = nmp_publicar();
+        exit(json_encode(['ok' => $ok, 'textos' => $n, 'em' => date('d/m H:i')]));
+    }
+
     $fone = preg_replace('/[^0-9x]/', '', (string) ($_POST['fone'] ?? ''));
     $mapa = nmc_ler_json(NMC_CHECKIN);
     if ($_POST['acao'] === 'checkin' && $fone !== '') {
@@ -108,6 +128,21 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && isset($_POST['acao'])) {
     }
     $ok = nmc_salvar_json(NMC_CHECKIN, $mapa);
     exit(json_encode(['ok' => $ok, 'em' => isset($mapa[$fone]) ? date('d/m H:i', strtotime($mapa[$fone])) : null]));
+}
+
+// ─────────────── Prévia editável (vai dentro do iframe da aba Página) ───────────────
+if (isset($_GET['previa'])) {
+    $html = nmp_montar(nmp_dados()['rascunho']);
+    // As telas de depois do envio ficam escondidas na página; na prévia aparecem para editar.
+    $extra = '<style>
+      .fim{display:block!important;margin-top:18px;position:relative}
+      .fim::before{position:absolute;top:-11px;left:18px;background:#00d4ff;color:#040d18;font:800 10.5px/1 Montserrat,sans-serif;
+        letter-spacing:.8px;text-transform:uppercase;padding:5px 10px;border-radius:100px}
+      #fim-sim::before{content:"Tela depois de responder: vou"}
+      #fim-nao::before{content:"Tela depois de responder: não vou"}
+    </style>';
+    header('Content-Type: text/html; charset=utf-8');
+    exit(str_replace('</head>', $extra . '</head>', $html));
 }
 
 // ─────────────── Dados ───────────────
@@ -215,7 +250,9 @@ if (($_GET['csv'] ?? '') === 'faltam') {
     exit;
 }
 
-$aba = ($_GET['aba'] ?? '') === 'grupo' ? 'grupo' : 'confirmacoes';
+$aba = in_array($_GET['aba'] ?? '', ['grupo', 'confirmacoes'], true) ? $_GET['aba'] : 'pagina';
+$pag = nmp_dados();
+$pagPendente = $pag['rascunho'] !== $pag['publicado'];
 
 // ─────────────── CSV ───────────────
 if (isset($_GET['csv'])) {
@@ -306,6 +343,20 @@ $token = (string) $_SESSION['token'];
   .painel-lista code{color:var(--text)}
   .painel-lista textarea{width:100%;background:var(--bg);border:1px solid rgba(255,255,255,.16);border-radius:10px;padding:12px 14px;color:var(--text);font:13px/1.6 ui-monospace,Menlo,monospace;margin-bottom:12px;resize:vertical}
   .painel-lista textarea:focus{outline:none;border-color:var(--accent)}
+  .menu a span.pend{background:rgba(255,193,7,.18);color:#ffc94d}
+  .ed-barra{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px}
+  .ed-estado{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .larguras{display:flex;gap:6px}
+  .ed-dica{font-size:13px;color:var(--muted);margin-bottom:14px}
+  .ed-palco{background:var(--card2);border:1px solid var(--border);border-radius:14px;padding:18px;display:flex;justify-content:center;margin-bottom:50px}
+  .ed-palco iframe{height:78vh;min-height:560px;max-width:100%;border:1px solid var(--border);border-radius:12px;background:#060d1a;transition:width .2s}
+  .bt.perigo{background:rgba(239,83,80,.13);border-color:rgba(239,83,80,.32);color:#ff8a87}
+  .bt[hidden]{display:none}
+  .ed-dialogo{background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:14px;padding:24px;max-width:440px;margin:auto}
+  .ed-dialogo::backdrop{background:rgba(0,0,0,.6)}
+  .ed-dialogo h3{font-family:'Montserrat',sans-serif;font-size:18px;font-weight:900;margin-bottom:8px}
+  .ed-dialogo p{font-size:14px;color:var(--muted);margin-bottom:18px;word-break:break-word}
+  .ed-dialogo .acoes{justify-content:flex-end}
   @media (max-width:760px){.cards{grid-template-columns:repeat(2,1fr)}.topo h1{font-size:21px}}
 </style>
 </head>
@@ -322,11 +373,126 @@ $token = (string) $_SESSION['token'];
   </div>
 
   <nav class="menu" aria-label="Seções">
-    <a href="<?= e($eu) ?>" <?= $aba === 'confirmacoes' ? 'aria-current="page"' : '' ?>>Confirmações <span><?= count($linhas) ?></span></a>
+    <a href="<?= e($eu) ?>" <?= $aba === 'pagina' ? 'aria-current="page"' : '' ?>>Página de confirmação<?php if ($pagPendente): ?> <span class="pend">rascunho</span><?php endif; ?></a>
+    <a href="?aba=confirmacoes" <?= $aba === 'confirmacoes' ? 'aria-current="page"' : '' ?>>Confirmações <span><?= count($linhas) ?></span></a>
     <a href="?aba=grupo" <?= $aba === 'grupo' ? 'aria-current="page"' : '' ?>>Grupo do WhatsApp <span><?= count($faltam) ?> faltam</span></a>
   </nav>
 
-<?php if ($aba === 'grupo'): ?>
+<?php if ($aba === 'pagina'): ?>
+  <div class="ed-barra">
+    <div class="ed-estado">
+      <span id="ed-selo" class="tag <?= $pagPendente ? 'alerta' : 'sim' ?>"><?= $pagPendente ? 'rascunho não publicado' : 'no ar igual ao painel' ?></span>
+      <span class="sub2" id="ed-quando"><?= $pag['publicado_em'] ? 'publicado ' . date('d/m H:i', strtotime($pag['publicado_em'])) : 'nunca publicado pelo painel' ?></span>
+    </div>
+    <div class="acoes">
+      <div class="larguras" role="group" aria-label="Largura da prévia">
+        <button class="aba" data-larg="100%" aria-pressed="false">Computador</button>
+        <button class="aba" data-larg="390px" aria-pressed="true">Celular</button>
+      </div>
+      <a class="bt" href="<?= e($linkConfirmar) ?>" target="_blank" rel="noopener">Ver no ar ↗</a>
+      <button class="bt perigo" id="ed-descartar" type="button" <?= $pagPendente ? '' : 'hidden' ?>>Descartar rascunho</button>
+      <button class="bt" id="ed-salvar" type="button">Salvar rascunho</button>
+      <button class="bt pri" id="ed-publicar" type="button">Publicar</button>
+    </div>
+  </div>
+  <p class="ed-dica">Clique em qualquer texto da página e escreva por cima. <b>Ctrl/⌘+B</b> deixa em negrito. <b>Salvar rascunho</b> guarda sem mexer no ar; <b>Publicar</b> leva para a página que o pessoal abre.</p>
+  <div class="ed-palco"><iframe id="ed-tela" src="?previa=1" title="Prévia editável da página de confirmação" style="width:390px"></iframe></div>
+
+  <dialog id="ed-confirma" class="ed-dialogo">
+    <h3>Publicar a página?</h3>
+    <p>Quem abrir <b><?= e($linkConfirmar) ?></b> passa a ver os textos novos na hora. A versão anterior fica guardada.</p>
+    <div class="acoes"><button class="bt" value="nao" id="ed-cancela">Cancelar</button><button class="bt pri" id="ed-vai">Publicar agora</button></div>
+  </dialog>
+
+  <script>
+  (function () {
+    var TOKEN = <?= json_encode($token) ?>;
+    var tela = document.getElementById('ed-tela');
+    var selo = document.getElementById('ed-selo');
+    var btDesc = document.getElementById('ed-descartar');
+    var mudou = false;
+
+    function doc() { return tela.contentDocument; }
+    function textos() {
+      var t = {};
+      doc().querySelectorAll('[data-ed]').forEach(function (el) { t[el.getAttribute('data-ed')] = el.innerHTML; });
+      return t;
+    }
+    function estado(pendente) {
+      selo.className = 'tag ' + (pendente ? 'alerta' : 'sim');
+      selo.textContent = pendente ? 'rascunho não publicado' : 'no ar igual ao painel';
+      btDesc.hidden = !pendente;
+    }
+
+    tela.addEventListener('load', function () {
+      var d = doc();
+      var st = d.createElement('style');
+      st.textContent = '[data-ed]{outline:1px dashed rgba(0,212,255,.35);outline-offset:4px;border-radius:4px;cursor:text;transition:outline-color .12s,background .12s}'
+        + '[data-ed]:hover{outline-color:#00d4ff;background:rgba(0,212,255,.06)}'
+        + '[data-ed]:focus{outline:2px solid #00d4ff;background:rgba(0,212,255,.08)}'
+        + '[data-ed].ed-mudado{outline-color:#4ade80}';
+      d.head.appendChild(st);
+      d.querySelectorAll('[data-ed]').forEach(function (el) {
+        el.setAttribute('contenteditable', 'true');
+        el.addEventListener('input', function () { el.classList.add('ed-mudado'); mudou = true; estado(true); });
+        el.addEventListener('keydown', function (e) {
+          if (e.key === 'Enter') { e.preventDefault(); d.execCommand('insertLineBreak'); }
+        });
+        el.addEventListener('paste', function (e) {
+          e.preventDefault();
+          d.execCommand('insertText', false, (e.clipboardData || window.clipboardData).getData('text/plain'));
+        });
+      });
+      // Na prévia nada navega nem envia: link e formulário ficam parados.
+      d.addEventListener('click', function (e) { if (e.target.closest('a')) e.preventDefault(); }, true);
+      d.addEventListener('submit', function (e) { e.preventDefault(); e.stopImmediatePropagation(); }, true);
+    });
+
+    function enviar(acao, extra) {
+      var f = new FormData();
+      f.append('acao', acao); f.append('token', TOKEN);
+      if (extra) f.append('textos', JSON.stringify(extra));
+      return fetch(location.pathname, { method: 'POST', body: f, credentials: 'same-origin' }).then(function (r) { return r.json(); });
+    }
+
+    document.getElementById('ed-salvar').addEventListener('click', function () {
+      var bt = this; bt.disabled = true;
+      enviar('salvar_pagina', textos()).then(function (j) {
+        bt.disabled = false; mudou = false; estado(j.pendente);
+        bt.textContent = '✓ Rascunho salvo'; setTimeout(function () { bt.textContent = 'Salvar rascunho'; }, 2000);
+      }).catch(function () { bt.disabled = false; bt.textContent = 'Falhou, tente de novo'; });
+    });
+
+    var dlg = document.getElementById('ed-confirma');
+    document.getElementById('ed-publicar').addEventListener('click', function () { dlg.showModal(); });
+    document.getElementById('ed-cancela').addEventListener('click', function () { dlg.close(); });
+    document.getElementById('ed-vai').addEventListener('click', function () {
+      var bt = this; bt.disabled = true; bt.textContent = 'Publicando…';
+      enviar('publicar_pagina', textos()).then(function (j) {
+        bt.disabled = false; bt.textContent = 'Publicar agora'; dlg.close();
+        if (!j.ok) { alert('Não consegui publicar. Nada mudou no ar.'); return; }
+        mudou = false; estado(false);
+        document.getElementById('ed-quando').textContent = 'publicado ' + j.em;
+      }).catch(function () { bt.disabled = false; bt.textContent = 'Publicar agora'; });
+    });
+
+    btDesc.addEventListener('click', function () {
+      if (!confirm('Descartar o rascunho e voltar aos textos que estão no ar?')) return;
+      enviar('descartar_pagina').then(function () { mudou = false; estado(false); tela.src = '?previa=1&t=' + Date.now(); });
+    });
+
+    document.querySelectorAll('.larguras .aba').forEach(function (b) {
+      b.addEventListener('click', function () {
+        document.querySelectorAll('.larguras .aba').forEach(function (x) { x.setAttribute('aria-pressed', 'false'); });
+        b.setAttribute('aria-pressed', 'true');
+        tela.style.width = b.dataset.larg;
+      });
+    });
+
+    window.addEventListener('beforeunload', function (e) { if (mudou) { e.preventDefault(); e.returnValue = ''; } });
+  })();
+  </script>
+<?php elseif ($aba === 'grupo'): ?>
   <?php $salvo = (string) ($_GET['salvo'] ?? ''); ?>
   <?php if ($salvo === 'erro'): ?>
     <div class="aviso alerta">Não consegui salvar a lista. Tente de novo.</div>

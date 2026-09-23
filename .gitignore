@@ -2,3 +2,4 @@ confirmacao-config.php
 *.ndjson
 .DS_Store
 grupo.txt
+nm-pocket/confirmar/index.html
