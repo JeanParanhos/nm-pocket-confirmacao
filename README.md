@@ -36,7 +36,7 @@ pelo painel a partir do modelo.
 2. **Aplicações**: o painel de quem preencheu o formulário (`painel-*.php`, que fica só no servidor; o painel acha o arquivo pelo nome).
 3. **Página de confirmação**: textos editáveis direto na página.
 4. **Confirmações**: quem respondeu, check-in e planilha.
-5. **Grupo do WhatsApp**: envio, acompanhamento, fora do grupo e lista para o ManyChat.
+5. **Grupo do WhatsApp**: envio, acompanhamento, fora do grupo e lista para o ManyChat. Cruza com as aplicações pelo telefone: quem está no grupo sem nome aparece com o nome da aplicação (vale também para `{nome}` e para o ManyChat; a lista do grupo não é alterada) e quem aplicou mas não está no grupo tem filtro próprio. Aplicação na lixeira do painel de aplicações fica de fora.
 
 ## Editar a página de aplicação
 

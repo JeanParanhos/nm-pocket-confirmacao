@@ -266,11 +266,21 @@ foreach (nmc_ler_ndjson(NMC_ARQUIVO) as $reg) {
 // Quem aplicou (por WhatsApp e por e-mail).
 $aplicouFone  = [];
 $aplicouEmail = [];
+$aplicacaoPorChave = []; // telefone => a aplicação mais recente (nome, WhatsApp, data, UF)
+$naLixeira = nmc_ler_json(NMC_DIR . '/excluidos.json'); // o que o painel de aplicações mandou para a lixeira
 foreach (nmc_ler_ndjson(NMC_APLICACOES) as $ap) {
     $r = $ap['respostas'] ?? [];
     $f = nmc_chave((string) ($r['whatsapp'] ?? ''));
     if ($f !== '') {
         $aplicouFone[$f] = true;
+        if (!isset($naLixeira[$ap['id'] ?? ''])) {
+            $aplicacaoPorChave[$f] = [
+                'nome'     => trim((string) ($r['nome'] ?? '')),
+                'whatsapp' => (string) ($r['whatsapp'] ?? ''),
+                'em'       => (string) ($ap['criado_em'] ?? ''),
+                'uf'       => (string) ($r['estado'] ?? ''),
+            ];
+        }
     }
     $m = strtolower(trim((string) ($r['email'] ?? '')));
     if ($m !== '') {
@@ -346,7 +356,13 @@ foreach ($grupo as $g) {
     if ($ch !== '' && isset($acessos[$ch])) {
         $gAcessaram++;
     }
+    // Nome do grupo sem letra nenhuma ("~.", "B", só o número): usa o nome que a pessoa deu na aplicação.
+    $apl = $ch !== '' ? ($aplicacaoPorChave[$ch] ?? null) : null;
+    $nomeOk = preg_match('/\p{L}.*\p{L}/u', $g['nome']) === 1;
     $item = $g + [
+        'mostra'  => $nomeOk || !$apl ? $g['nome'] : $apl['nome'],
+        'da_apl'  => !$nomeOk && $apl && $apl['nome'] !== '',
+        'apl'     => $apl,
         'wa'      => $ch !== '' ? nmc_wa($g['fone']) : '',
         'link'    => $ch !== '' ? $linkConfirmar . '?c=' . nmc_codigo($ch) : '',
         'etapa'   => $etapa,
@@ -358,8 +374,16 @@ foreach ($grupo as $g) {
         $faltam[] = $item;
     }
 }
-$foraDoGrupo = 0;
 $chavesGrupo = array_flip(array_filter(array_column($grupo, 'chave')));
+$aplicaramFora = [];
+foreach ($aplicacaoPorChave as $ch => $a) {
+    // Quem já respondeu a confirmação aparece em "Responderam fora do grupo", não aqui de novo.
+    if (!isset($chavesGrupo[$ch]) && !isset($pessoas[$ch])) {
+        $aplicaramFora[] = $a + ['chave' => $ch, 'wa' => nmc_wa($a['whatsapp'])];
+    }
+}
+usort($aplicaramFora, static fn($a, $b) => strcmp($b['em'], $a['em']));
+$foraDoGrupo = 0;
 foreach ($linhas as &$l) {
     $l['no_grupo'] = isset($chavesGrupo[$l['fone']]) || $l['grupo'] !== '';
     if (!$l['no_grupo']) {
@@ -395,7 +419,7 @@ if (($_GET['csv'] ?? '') === 'manychat') {
             continue;
         }
         // Nome do grupo vem com emoji e til ("~Alex Mesquita", "~⚖️"): fica só o que é letra.
-        $limpo = trim(preg_replace('/\s+/u', ' ', preg_replace('/[^\p{L}\s\'\-]/u', ' ', $f['nome'])));
+        $limpo = trim(preg_replace('/\s+/u', ' ', preg_replace('/[^\p{L}\s\'\-]/u', ' ', $f['mostra'])));
         $partes = preg_split('/\s+/', $limpo, 2, PREG_SPLIT_NO_EMPTY);
         $primeiro = isset($partes[0]) && preg_match('/\p{L}{2,}/u', $partes[0]) ? $partes[0] : '';
         fputcsv($saida, ['+' . $f['wa'], $primeiro, $primeiro !== '' ? ($partes[1] ?? '') : '', $f['link'], $rotulos[$f['etapa']] ?? '']);
@@ -538,6 +562,7 @@ $token = (string) $_SESSION['token'];
   .inline.editando .v,.inline.editando .lapis-in{display:none}
   .campo-in{background:var(--bg);border:1px solid var(--accent);border-radius:8px;padding:7px 10px;color:var(--text);font:14px 'Inter',sans-serif;width:230px;max-width:100%;outline:none}
   .campo-in.erro{border-color:#ef5350}
+  .nome-apl{font-size:13px;color:#6fe3ff;margin-top:2px}
   .erro-in{color:#ff8a87;font-size:12px;font-weight:500}
   .inline.salvo .v{color:#4ade80;transition:color .3s}
   tr.acabou-de-enviar{background:rgba(0,212,255,.05)}
@@ -740,8 +765,9 @@ $token = (string) $_SESSION['token'];
             'acessou'      => ['Abriu, não respondeu', $contaEtapa['acessou'] ?? 0],
             'vai'          => ['Vão', $gVai],
             'nao'          => ['Não vão', $gNao],
-            'fora'         => ['Fora do grupo', $foraDoGrupo],
-            'todos'        => ['Todos', count($gente) + $foraDoGrupo],
+            'fora'         => ['Responderam fora do grupo', $foraDoGrupo],
+            'aplicou_fora' => ['Aplicaram, fora do grupo', count($aplicaramFora)],
+            'todos'        => ['Todos', count($gente) + $foraDoGrupo + count($aplicaramFora)],
         ];
       ?>
       <?php foreach ($filtrosG as $k => [$rot, $n]): ?>
@@ -749,8 +775,11 @@ $token = (string) $_SESSION['token'];
       <?php endforeach; ?>
     </div>
   </div>
+  <?php if ($aplicaramFora !== []): ?>
+    <p class="nota-grupo"><b><?= count($aplicaramFora) ?></b> pessoas aplicaram e não estão na lista do grupo. Estão no filtro <b>Aplicaram, fora do grupo</b>.</p>
+  <?php endif; ?>
   <?php if ($foraDoGrupo > 0): ?>
-    <p class="nota-grupo aviso-fora"><b><?= $foraDoGrupo ?></b> <?= $foraDoGrupo === 1 ? 'pessoa respondeu' : 'pessoas responderam' ?> a página sem estar na lista do grupo. Estão no filtro <b>Fora do grupo</b>, com o botão para colocar no grupo.</p>
+    <p class="nota-grupo aviso-fora"><b><?= $foraDoGrupo ?></b> <?= $foraDoGrupo === 1 ? 'pessoa respondeu' : 'pessoas responderam' ?> a página sem estar na lista do grupo. Estão no filtro <b>Responderam fora do grupo</b>, com o botão para colocar no grupo.</p>
   <?php endif; ?>
 
   <div class="tabela-box">
@@ -761,10 +790,12 @@ $token = (string) $_SESSION['token'];
         <?php foreach ($gente as $p): ?>
           <tr data-etapa="<?= e($p['etapa']) ?>" data-linha="<?= (int) $p['linha'] ?>"
               data-antes="<?= e(trim($p['nome'] . ' | ' . $p['fone'])) ?>"
-              data-nome="<?= e($p['nome']) ?>" data-fone="<?= e($p['fone']) ?>"
+              data-nome="<?= e($p['nome']) ?>" data-nomemsg="<?= e($p['mostra']) ?>" data-fone="<?= e($p['fone']) ?>"
               data-chave="<?= e($p['chave']) ?>" data-wa="<?= e($p['wa']) ?>" data-link="<?= e($p['link']) ?>"
-              data-busca="<?= e(strtolower($p['nome'] . ' ' . preg_replace('/\D/', '', $p['fone']))) ?>">
-            <td class="nome"><span class="inline" data-campo="nome"><span class="v"><?= $p['nome'] !== '' ? e($p['nome']) : '<span class="sub2">sem nome</span>' ?></span><button class="lapis-in" type="button" title="Editar nome" aria-label="Editar nome">✎</button></span></td>
+              data-busca="<?= e(strtolower($p['nome'] . ' ' . ($p['apl']['nome'] ?? '') . ' ' . preg_replace('/\D/', '', $p['fone']))) ?>">
+            <td class="nome"><span class="inline" data-campo="nome"><span class="v"><?= $p['nome'] !== '' ? e($p['nome']) : '<span class="sub2">sem nome</span>' ?></span><button class="lapis-in" type="button" title="Editar nome" aria-label="Editar nome">✎</button></span>
+              <?php if ($p['da_apl']): ?><div class="nome-apl"><?= e($p['apl']['nome']) ?> <span class="sub2">da aplicação</span></div>
+              <?php elseif ($p['apl'] && $p['apl']['nome'] !== '' && strcasecmp($p['apl']['nome'], $p['nome']) !== 0): ?><div class="sub2">aplicou como <?= e($p['apl']['nome']) ?></div><?php endif; ?></td>
             <td><span class="inline" data-campo="fone"><span class="v"><?= $p['fone'] !== '' ? e($p['fone']) : '<span class="tag alerta">sem número</span>' ?></span><button class="lapis-in" type="button" title="Editar telefone" aria-label="Editar telefone">✎</button></span></td>
             <td class="situacao">
               <?php
@@ -800,6 +831,16 @@ $token = (string) $_SESSION['token'];
               <span class="tag alerta">fora do grupo</span>
               <div class="sub2 passos">respondeu <?= e($l['data']) ?></div>
             </td>
+            <td class="acoes-linha"><button class="ck g-por-no-grupo" type="button">Colocar no grupo</button></td>
+          </tr>
+        <?php endforeach; ?>
+        <?php foreach ($aplicaramFora as $a): ?>
+          <tr data-etapa="aplicou_fora" data-fora="1" data-nome="<?= e($a['nome']) ?>" data-fone="<?= e($a['whatsapp']) ?>"
+              data-busca="<?= e(strtolower($a['nome'] . ' ' . preg_replace('/\D/', '', $a['whatsapp']))) ?>">
+            <td class="nome"><?= e($a['nome']) ?></td>
+            <td><a class="wa" href="https://wa.me/<?= e($a['wa']) ?>" target="_blank" rel="noopener"><?= e($a['whatsapp']) ?></a></td>
+            <td class="situacao"><span class="tag azul">Aplicou</span> <span class="tag alerta">fora do grupo</span>
+              <div class="sub2 passos">aplicou <?= $a['em'] !== '' ? e(date('d/m H:i', strtotime($a['em']))) : '' ?><?= $a['uf'] !== '' ? ' · ' . e($a['uf']) : '' ?></div></td>
             <td class="acoes-linha"><button class="ck g-por-no-grupo" type="button">Colocar no grupo</button></td>
           </tr>
         <?php endforeach; ?>
@@ -887,7 +928,7 @@ $token = (string) $_SESSION['token'];
       tabela.querySelectorAll('tbody tr').forEach(function (tr) {
         var e = tr.dataset.etapa;
         var ok = filtro === 'todos' ? true
-          : filtro === 'faltam' ? (e !== 'vai' && e !== 'nao' && e !== 'fora')
+          : filtro === 'faltam' ? (e !== 'vai' && e !== 'nao' && e !== 'fora' && e !== 'aplicou_fora')
           : e === filtro;
         if (ok && t) ok = tr.dataset.busca.indexOf(t) !== -1;
         tr.hidden = !ok;
@@ -925,13 +966,13 @@ $token = (string) $_SESSION['token'];
     var dlgEnv = document.getElementById('g-dlg-enviar');
     var trEnv = null;
     function montar(tr) {
-      return modelo.value.replace(/\{link\}/g, tr.dataset.link).replace(/\{nome\}/g, tr.dataset.nome || '').trim();
+      return modelo.value.replace(/\{link\}/g, tr.dataset.link).replace(/\{nome\}/g, tr.dataset.nomemsg || '').trim();
     }
     tabela.addEventListener('click', function (e) {
       var bt = e.target.closest('.g-enviar');
       if (bt) {
         trEnv = bt.closest('tr');
-        document.getElementById('g-env-nome').textContent = trEnv.dataset.nome || trEnv.dataset.fone;
+        document.getElementById('g-env-nome').textContent = trEnv.dataset.nomemsg || trEnv.dataset.fone;
         document.getElementById('g-env-fone').textContent = trEnv.dataset.fone;
         document.getElementById('g-env-texto').value = montar(trEnv);
         dlgEnv.showModal();
